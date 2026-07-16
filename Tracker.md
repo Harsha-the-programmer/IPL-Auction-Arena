@@ -5,8 +5,8 @@
 | Phase   | Task                               | Status         | Started    | Completed  | Notes                                        |
 | ------- | ---------------------------------- | -------------- | ---------- | ---------- | -------------------------------------------- |
 | **0.1** | Git repo init + Next.js setup      | ✅ Done        | 2026-07-16 | 2026-07-16 | Repo initialized, Next.js 14 + TS + Tailwind |
-| **0.1** | Prisma + Neon + Migration          | 🟨 In Progress | 2026-07-16 |            | Schema ready, needs DATABASE_URL             |
-| **0.1** | Vercel + Railway deploy            | ⬜ Pending     |            |            |                                              |
+| **0.1** | Prisma + Neon + Migration          | ✅ Done        | 2026-07-16 | 2026-07-16 | Database synced successfully                 |
+| **0.1** | Vercel + Railway deploy            | 🟨 In Progress | 2026-07-16 |            |                                              |
 | **0.2** | Socket.io server + Types           | ✅ Done        | 2026-07-16 | 2026-07-16 | server.ts + types.ts created                 |
 | **0.2** | Import API + Room API              | ✅ Done        | 2026-07-16 | 2026-07-16 | /api/import-room, /api/room/[roomId]         |
 | **0.3** | Design system + shadcn/ui          | ✅ Done        | 2026-07-16 | 2026-07-16 | globals.css, tailwind.config, components     |
