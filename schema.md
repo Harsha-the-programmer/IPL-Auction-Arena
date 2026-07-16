@@ -1,0 +1,290 @@
+# Database Schema (Prisma)
+
+## Complete schema.prisma
+
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum RoomStatus {
+  LOBBY       // Waiting for players to join, claim teams, lock lineups
+  MATCH       // Active match in progress
+  COMPLETED   // All 10 rounds done, results shown
+}
+
+enum TeamClaimStatus {
+  UNCLAIMED   // No one has requested this team
+  PENDING     // User requested, awaiting host approval
+  APPROVED    // Host approved, team locked to user
+}
+
+enum PlayerRole {
+  BATTER
+  BOWLER
+  ALL_ROUNDER
+  WICKET_KEEPER
+}
+
+enum LineupPosition {
+  OPENER_1    // Position 1
+  OPENER_2    // Position 2
+  THREE       // Position 3
+  FOUR        // Position 4
+  FIVE        // Position 5
+  SIX         // Position 6
+  SEVEN       // Position 7
+  EIGHT       // Position 8
+  NINE        // Position 9
+  TEN         // Position 10
+  ELEVEN      // Position 11
+}
+
+enum RoundPhase {
+  PENDING     // Waiting for all teams to lock current position
+  COUNTDOWN   // 3-2-1 countdown active
+  REVEALED    // Picks shown, awaiting AI
+  RANKED      // AI returned ranking, points calculated
+  COMPLETED   // Round fully done, auto-advancing
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model Room {
+  id              String        @id @default(cuid())
+  auctionRoomId   String        @unique @map("auction_room_id") // e.g., "9TM8LF"
+  status          RoomStatus    @default(LOBBY)
+  currentRound    Int           @default(0) @map("current_round") // 0-10
+  currentPosition LineupPosition? @map("current_position") // Which position being played
+  hostSocketId    String?       @map("host_socket_id") // First joiner = host
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  completedAt     DateTime?     @map("completed_at")
+
+  teams           Team[]
+  players         Player[]
+  lineups         Lineup[]
+  rounds          Round[]
+  participants    Participant[]
+
+  @@index([auctionRoomId])
+  @@map("rooms")
+}
+
+model Team {
+  id              String            @id @default(cuid())
+  roomId          String            @map("room_id")
+  teamId          String            @map("team_id") // MI, CSK, RCB, etc.
+  name            String            // Full: "Mumbai Indians"
+  shortName       String            @map("short_name") // MI, CSK
+  color           String            // Hex: "#004BA0"
+  claimStatus     TeamClaimStatus   @default(UNCLAIMED) @map("claim_status")
+  ownerSocketId   String?           @map("owner_socket_id") // Socket ID of approved user
+  ownerName       String?           @map("owner_name")    // Display name
+  requestedBySocketId String?       @map("requested_by_socket_id") // Pending request
+  requestedByName String?           @map("requested_by_name")
+  purse           Int               // Remaining purse from auction (lakhs)
+
+  room            Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  players         Player[]
+  lineup          Lineup?
+  scores          Score[]
+  picks           Pick[]
+
+  @@unique([roomId, teamId])
+  @@index([roomId, claimStatus])
+  @@map("teams")
+}
+
+model Player {
+  id              String       @id @default(cuid())
+  roomId          String       @map("room_id")
+  teamId          String       @map("team_id")
+  playerId        String       @map("player_id") // Unique from auction game
+  name            String
+  role            PlayerRole
+  isOverseas      Boolean      @default(false) @map("is_overseas")
+  price           Int          // In lakhs (e.g., 1600 = ₹16 Cr)
+  auctionData     Json         // Full player object from auction game
+
+  room            Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  team            Team         @relation(fields: [roomId, teamId], references: [roomId, teamId], onDelete: Cascade)
+  lineupSlots     LineupSlot[]
+  picks           Pick[]
+
+  @@index([roomId, teamId])
+  @@index([roomId, playerId])
+  @@map("players")
+}
+
+model Participant {
+  id              String   @id @default(cuid())
+  roomId          String   @map("room_id")
+  socketId        String   @unique @map("socket_id")
+  displayName     String   @map("display_name")
+  teamId          String?  @map("team_id") // Null if spectator
+  isHost          Boolean  @default(false)
+  isOnline        Boolean  @default(true)
+  joinedAt        DateTime @default(now()) @map("joined_at")
+  lastSeenAt      DateTime @default(now()) @map("last_seen_at")
+
+  room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  team            Team?    @relation(fields: [roomId, teamId], references: [roomId, teamId], onDelete: SetNull)
+
+  @@index([roomId, isOnline])
+  @@map("participants")
+}
+
+model Lineup {
+  id        String   @id @default(cuid())
+  roomId    String   @map("room_id")
+  teamId    String   @map("team_id")
+  isLocked  Boolean  @default(false) @map("is_locked") // Entire lineup locked (all 11)
+  lockedAt  DateTime? @map("locked_at")
+
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [roomId, teamId], references: [roomId, teamId], onDelete: Cascade)
+  slots     LineupSlot[]
+
+  @@unique([roomId, teamId])
+  @@map("lineups")
+}
+
+model LineupSlot {
+  id            String           @id @default(cuid())
+  lineupId      String           @map("lineup_id")
+  position      LineupPosition   // 1-11
+  playerId      String           @map("player_id")
+  isLocked      Boolean          @default(false) @map("is_locked") // This position locked
+  lockedAtRound Int?             @map("locked_at_round") // Which round locked it
+
+  lineup        Lineup           @relation(fields: [lineupId], references: [id], onDelete: Cascade)
+  player        Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([lineupId, position])
+  @@unique([lineupId, playerId])
+  @@map("lineup_slots")
+}
+
+model Round {
+  id              String      @id @default(cuid())
+  roomId          String      @map("room_id")
+  roundNumber     Int         @map("round_number") // 1-10
+  position        LineupPosition // Which batting position this round
+  phase           RoundPhase  @default(PENDING)
+  aiResponse      Json?       @map("ai_response") // Full AI ranking output
+  startedAt       DateTime?   @map("started_at")
+  completedAt     DateTime?   @map("completed_at")
+
+  room            Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  picks           Pick[]
+  scores          Score[]
+
+  @@unique([roomId, roundNumber])
+  @@map("rounds")
+}
+
+model Pick {
+  id            String           @id @default(cuid())
+  roundId       String           @map("round_id")
+  teamId        String           @map("team_id")
+  playerId      String           @map("player_id")
+  position      LineupPosition   // Position being revealed this round
+
+  round         Round            @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  team          Team             @relation(fields: [roundId, teamId], references: [roomId, teamId], onDelete: Cascade)
+  player        Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, teamId])
+  @@map("picks")
+}
+
+model Score {
+  id        String   @id @default(cuid())
+  roomId    String   @map("room_id")
+  roundId   String   @map("round_id")
+  teamId    String   @map("team_id")
+  points    Int      // Points awarded this round (N - rank + 1)
+  rank      Int      // 1 = best, N = worst
+  total     Int      // Cumulative total after this round
+
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  round     Round    @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [roomId, teamId], references: [roomId, teamId], onDelete: Cascade)
+
+  @@unique([roundId, teamId])
+  @@map("scores")
+}
+```
+
+## Key Relationships
+
+```
+Room 1──★ Team (10 per room)
+Room 1──★ Player (150-250 per room)
+Room 1──★ Participant (2-10 per room)
+Room 1──★ Lineup (10 per room, one per team)
+Room 1──★ Round (10 per room)
+Round 1──★ Pick (1 per team per round = ~10 per round)
+Round 1──★ Score (1 per team per round)
+Lineup 1──★ LineupSlot (11 per lineup)
+Team 1──★ Player (15-25 per team)
+```
+
+## Indexes for Performance
+
+- `Room.auctionRoomId` - Unique lookup by auction code
+- `Team(roomId, claimStatus)` - Lobby team grid queries
+- `Player(roomId, teamId)` - Lineup builder squad loading
+- `Participant(roomId, isOnline)` - Live user list
+- `LineupSlot(lineupId, position)` - Ordered lineup retrieval
+- `Pick(roundId, teamId)` - Round reveal queries
+- `Score(roundId, teamId)` - Leaderboard calculations
+
+## Migration Strategy
+
+```bash
+# Initial migration
+npx prisma migrate dev --name init
+
+# Subsequent changes
+npx prisma migrate dev --name add_field_xyz
+
+# Production deploy
+npx prisma migrate deploy
+```
+
+## Data Import (from Userscript)
+
+```typescript
+// POST /api/import-room payload creates in transaction:
+await prisma.$transaction(async (tx) => {
+  // 1. Create Room
+  const room = await tx.room.create({
+    data: {
+      auctionRoomId: payload.auctionRoomId,
+      // ... teams, players, etc.
+    }
+  });
+  
+  // 2. Create Teams (10)
+  await tx.team.createMany({ data: teamsData });
+  
+  // 3. Create Players (150-250)
+  await tx.player.createMany({ data: playersData });
+  
+  // 4. Create Lineups (empty, one per team)
+  await tx.lineup.createMany({ data: lineupsData });
+});
+```
