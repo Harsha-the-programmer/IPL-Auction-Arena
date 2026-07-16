@@ -50,4 +50,4 @@ prisma/migrations/
 userscript/public/userscript/
 
 # OS
-Thumbs.db
+Thumbs.db.gh_token
