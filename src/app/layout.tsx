@@ -1,72 +1,74 @@
-import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
-import './globals.css'
+import type { Metadata, Viewport } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
+import "./globals.css";
 
-const geistSans = Geist({
-  subsets: ['latin'],
-  variable: '--font-geist-sans',
-  display: 'swap',
-})
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
 
-const geistMono = Geist_Mono({
-  subsets: ['latin'],
-  variable: '--font-geist-mono',
-  display: 'swap',
-})
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: 'IPL Auction Arena',
-  description: 'Post-auction playing XI battles with AI-powered rankings. Import your auction squads and compete with friends.',
-  keywords: ['IPL', 'cricket', 'auction', 'fantasy', 'gaming', 'multiplayer'],
-  authors: [{ name: 'IPL Auction Arena' }],
-  creator: 'IPL Auction Arena',
-  publisher: 'IPL Auction Arena',
-  robots: 'index, follow',
+  title: "IPL Auction Arena",
+  description:
+    "Post-auction playing XI battles with AI-powered rankings. Import your auction squads and compete with friends.",
+  keywords: ["IPL", "cricket", "auction", "fantasy", "gaming", "multiplayer"],
+  authors: [{ name: "IPL Auction Arena" }],
+  creator: "IPL Auction Arena",
+  publisher: "IPL Auction Arena",
+  robots: "index, follow",
   openGraph: {
-    type: 'website',
-    locale: 'en_IN',
-    url: 'https://arena.app',
-    siteName: 'IPL Auction Arena',
-    title: 'IPL Auction Arena - Play Your XI Battle',
-    description: 'Import auction squads, build your playing XI, and battle friends with AI rankings.',
+    type: "website",
+    locale: "en_IN",
+    url: "https://arena.app",
+    siteName: "IPL Auction Arena",
+    title: "IPL Auction Arena - Play Your XI Battle",
+    description:
+      "Import auction squads, build your playing XI, and battle friends with AI rankings.",
     images: [
       {
-        url: '/og-image.png',
+        url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: 'IPL Auction Arena',
+        alt: "IPL Auction Arena",
       },
     ],
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'IPL Auction Arena',
-    description: 'Post-auction playing XI battles with AI-powered rankings.',
-    images: ['/og-image.png'],
+    card: "summary_large_image",
+    title: "IPL Auction Arena",
+    description: "Post-auction playing XI battles with AI-powered rankings.",
+    images: ["/og-image.png"],
   },
   icons: {
-    icon: '/favicon.ico',
-    shortcut: '/favicon-16x16.png',
-    apple: '/apple-touch-icon.png',
+    icon: "/favicon.ico",
+    shortcut: "/favicon-16x16.png",
+    apple: "/apple-touch-icon.png",
   },
-  manifest: '/manifest.json',
-}
+  manifest: "/manifest.json",
+};
 
 export const viewport: Viewport = {
-  themeColor: '#0a0a0a',
-  width: 'device-width',
+  themeColor: "#0a0a0a",
+  width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-}
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
-    <html lang="en" class={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="en" class={`${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
         <link rel="preconnect" href="https://api.x.ai" />
       </head>
@@ -74,5 +76,5 @@ export default function RootLayout({
         {children}
       </body>
     </html>
-  )
+  );
 }

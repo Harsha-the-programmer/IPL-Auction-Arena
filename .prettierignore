@@ -1,0 +1,29 @@
+# Ignore package lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Ignore build outputs
+.next
+dist
+build
+public/userscript
+
+# Ignore node_modules
+node_modules
+
+# Ignore IDE
+.idea
+.vscode
+
+# Ignore OS
+.DS_Store
+Thumbs.db
+
+# Ignore env files
+.env
+.env.local
+.env.production.local
+
+# Ignore prisma
+prisma/migrations

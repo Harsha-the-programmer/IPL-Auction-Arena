@@ -1,7 +1,11 @@
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'url'
 
-const distDir = path.resolve(__dirname, '../public/userscript')
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+const distDir = path.resolve(__dirname, '../../public/userscript')
 const outputFile = path.join(distDir, 'ipl-auction-arena.user.js')
 
 // Read the built file
