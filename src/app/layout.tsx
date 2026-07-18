@@ -15,6 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("http://localhost:3000"),
   title: "IPL Auction Arena",
   description:
     "Post-auction playing XI battles with AI-powered rankings. Import your auction squads and compete with friends.",
@@ -68,7 +69,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" class={`${inter.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://api.x.ai" />
       </head>

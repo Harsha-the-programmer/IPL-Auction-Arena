@@ -1,15 +1,29 @@
 // Shared TypeScript types for Socket.io events
 
+export interface RoundState {
+  id: string
+  roundNumber: number
+  position: 'OPENER_1' | 'OPENER_2' | 'THREE' | 'FOUR' | 'FIVE' | 'SIX' | 'SEVEN' | 'EIGHT' | 'NINE' | 'TEN' | 'ELEVEN' | null
+  phase: 'PENDING' | 'COUNTDOWN' | 'REVEALED' | 'RANKED' | 'COMPLETED'
+  aiResponse: any | null
+  startedAt: string | null
+  completedAt: string | null
+  picks: PickState[]
+  scores: ScoreState[]
+}
+
 export interface RoomState {
   id: string
   auctionRoomId: string
   status: 'LOBBY' | 'MATCH' | 'COMPLETED'
   currentRound: number
-  currentPosition: number | null
+  currentPosition: 'OPENER_1' | 'OPENER_2' | 'THREE' | 'FOUR' | 'FIVE' | 'SIX' | 'SEVEN' | 'EIGHT' | 'NINE' | 'TEN' | 'ELEVEN' | null
   hostSocketId: string | null
   teams: TeamState[]
   participants: ParticipantState[]
+  rounds: RoundState[]
   createdAt: string
+  completedAt: string | null
 }
 
 export interface TeamState {
@@ -21,6 +35,8 @@ export interface TeamState {
   claimStatus: 'UNCLAIMED' | 'PENDING' | 'APPROVED'
   ownerSocketId: string | null
   ownerName: string | null
+  requestedBySocketId: string | null
+  requestedByName: string | null
   purse: number
   players: PlayerState[]
   lineup: LineupSlotState[] | null
@@ -53,6 +69,8 @@ export interface ParticipantState {
   teamId: string | null
   isHost: boolean
   isOnline: boolean
+  joinedAt: string
+  lastSeenAt: string
 }
 
 export interface ScoreState {

@@ -1,6 +1,6 @@
 import { Server as HTTPServer } from 'http'
 import { Server as SocketIOServer, Socket } from 'socket.io'
-import { prisma } from './prisma'
+import { prisma } from '@/lib/prisma'
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
@@ -13,7 +13,8 @@ import type {
   AIRanking,
   ScoreState,
   TeamScore,
-} from './types'
+  RoundState,
+} from '@/lib/types'
 
 const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents, {}, SocketData>({
   cors: {
@@ -25,11 +26,31 @@ const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents, {}, So
   pingInterval: 25000,
 })
 
+// Convert position number (1-11) to LineupPosition enum
+function positionToEnum(position: number): 'OPENER_1' | 'OPENER_2' | 'THREE' | 'FOUR' | 'FIVE' | 'SIX' | 'SEVEN' | 'EIGHT' | 'NINE' | 'TEN' | 'ELEVEN' {
+  const positions = ['OPENER_1', 'OPENER_2', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN'] as const
+  return positions[position - 1] || 'OPENER_1'
+}
+
+// Convert LineupPosition enum back to number
+function enumToPositionNumber(enumValue: string | null): number {
+  if (!enumValue) return 1
+  const positions = ['OPENER_1', 'OPENER_2', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN'] as const
+  return positions.indexOf(enumValue as any) + 1 || 1
+}
+
+// Convert LineupPosition enum to number (1-11)
+function enumToPosition(enumValue: 'OPENER_1' | 'OPENER_2' | 'THREE' | 'FOUR' | 'FIVE' | 'SIX' | 'SEVEN' | 'EIGHT' | 'NINE' | 'TEN' | 'ELEVEN' | null): number {
+  if (!enumValue) return 1
+  const positions = ['OPENER_1', 'OPENER_2', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN'] as const
+  return positions.indexOf(enumValue) + 1
+}
+
 // In-memory room state cache (synced with DB)
 const roomCache = new Map<string, RoomState>()
 
-function getRoomCache(roomId: string): RoomState | undefined {
-  return roomCache.get(roomId)
+function getRoomCache(roomId: string): RoomState | null {
+  return roomCache.get(roomId) ?? null
 }
 
 function setRoomCache(roomId: string, state: RoomState) {
@@ -75,13 +96,15 @@ function mapRoomToState(room: any): RoomState {
     hostSocketId: room.hostSocketId,
     teams: room.teams.map(mapTeamToState),
     participants: room.participants.map(mapParticipantToState),
+    rounds: room.rounds?.map(mapRoundToState) || [],
     createdAt: room.createdAt.toISOString(),
+    completedAt: room.completedAt?.toISOString() || null,
   }
 }
 
 function mapTeamToState(team: any): TeamState {
   return {
-    id: team.id,
+    id: team.teamId,
     teamId: team.teamId,
     name: team.name,
     shortName: team.shortName,
@@ -89,6 +112,8 @@ function mapTeamToState(team: any): TeamState {
     claimStatus: team.claimStatus,
     ownerSocketId: team.ownerSocketId,
     ownerName: team.ownerName,
+    requestedBySocketId: team.requestedBySocketId,
+    requestedByName: team.requestedByName,
     purse: team.purse,
     players: team.players.map(mapPlayerToState),
     lineup: team.lineup
@@ -129,6 +154,46 @@ function mapParticipantToState(p: any): ParticipantState {
     teamId: p.teamId,
     isHost: p.isHost,
     isOnline: p.isOnline,
+    joinedAt: p.joinedAt?.toISOString() || new Date().toISOString(),
+    lastSeenAt: p.lastSeenAt?.toISOString() || new Date().toISOString(),
+  }
+}
+
+function mapRoundToState(round: any): RoundState {
+  return {
+    id: round.id,
+    roundNumber: round.roundNumber,
+    position: round.position,
+    phase: round.phase,
+    aiResponse: round.aiResponse,
+    startedAt: round.startedAt?.toISOString() || null,
+    completedAt: round.completedAt?.toISOString() || null,
+    picks: round.picks?.map(mapPickToState) || [],
+    scores: round.scores?.map(mapScoreToState) || [],
+  }
+}
+
+function mapPickToState(pick: any): PickState {
+  return {
+    teamId: pick.teamId,
+    teamShortName: pick.team?.shortName || '',
+    teamColor: pick.team?.color || '',
+    playerId: pick.playerId,
+    playerName: pick.player?.name || '',
+    role: pick.player?.role || '',
+    price: pick.player?.price || 0,
+    position: pick.position,
+  }
+}
+
+function mapScoreToState(score: any): ScoreState {
+  return {
+    id: score.id,
+    roundId: score.roundId,
+    teamId: score.teamId,
+    points: score.points,
+    rank: score.rank,
+    total: score.total,
   }
 }
 
@@ -168,7 +233,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
   socket.on('room:join', async ({ roomId, displayName }) => {
     try {
       // Load room from DB if not cached
-      let room = getRoomCache(roomId)
+      let room: RoomState | null = getRoomCache(roomId)
       if (!room) {
         room = await loadRoomFromDB(roomId)
         if (!room) {
@@ -187,7 +252,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
         const isHost = room.participants.length === 0
 
         // Create participant in DB
-        participant = await prisma.participant.create({
+        const newParticipant = await prisma.participant.create({
           data: {
             roomId,
             socketId: socket.id,
@@ -196,6 +261,11 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
             isOnline: true,
           },
         })
+        participant = {
+          ...newParticipant,
+          joinedAt: newParticipant.joinedAt.toISOString(),
+          lastSeenAt: newParticipant.lastSeenAt.toISOString(),
+        }
 
         // If first participant, set as host
         if (isHost) {
@@ -210,6 +280,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
         setRoomCache(roomId, room)
       } else {
         // Reconnection - update online status
+        if (!participant) return
         await prisma.participant.update({
           where: { id: participant.id },
           data: { isOnline: true, lastSeenAt: new Date() },
@@ -255,7 +326,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
 
       // Update team to PENDING
       await prisma.team.update({
-        where: { id: team.id },
+        where: { id: team.teamId },
         data: {
           claimStatus: 'PENDING',
           requestedBySocketId: socket.id,
@@ -297,7 +368,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
 
       // Update in DB
       await prisma.team.update({
-        where: { id: team.id },
+        where: { id: team.teamId },
         data: {
           claimStatus: 'APPROVED',
           ownerSocketId: targetSocketId,
@@ -310,7 +381,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
       // Update participant's team
       await prisma.participant.update({
         where: { socketId: targetSocketId },
-        data: { teamId: team.id },
+        data: { teamId: team.teamId },
       })
 
       team.claimStatus = 'APPROVED'
@@ -324,14 +395,15 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
         const lineup = await prisma.lineup.create({
           data: {
             roomId,
-            teamId: team.id,
+            teamId: team.teamId,
             slots: {
               create: Array.from({ length: 11 }, (_, i) => ({
-                position: i + 1,
+                position: positionToEnum(i + 1),
                 playerId: null,
               })),
             },
           },
+          include: { slots: true },
         })
         team.lineup = lineup.slots.map(mapLineupSlotToState)
       }
@@ -368,7 +440,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
       if (team.requestedBySocketId !== targetSocketId) return
 
       await prisma.team.update({
-        where: { id: team.id },
+        where: { id: team.teamId },
         data: {
           claimStatus: 'UNCLAIMED',
           requestedBySocketId: null,
@@ -405,11 +477,11 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
       await prisma.$transaction(
         lineupSlots.map(slot =>
           prisma.lineupSlot.upsert({
-            where: { lineupId_position: { lineupId: team.lineup![0].id, position: slot.position } },
+            where: { lineupId_position: { lineupId: team.lineup![0].id, position: positionToEnum(slot.position) } },
             update: { playerId: slot.playerId, isLocked: false },
             create: {
               lineupId: team.lineup![0].id,
-              position: slot.position,
+              position: positionToEnum(slot.position),
               playerId: slot.playerId,
               isLocked: false,
             },
@@ -430,9 +502,9 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
 
       // Broadcast to room
       io.to(`room:${roomId}`).emit('lineup:synced', {
-        teamId: team.id,
-        lineupSlots: team.lineup,
-        lockedPositions: team.lineup.filter(l => l.isLocked).map(l => l.position),
+        teamId: team.teamId,
+        lineupSlots: team.lineup ?? [],
+        lockedPositions: team.lineup?.filter(l => l.isLocked).map(l => l.position) ?? [],
       })
 
       await updatePendingTeams(roomId)
@@ -468,7 +540,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
       setRoomCache(roomId, room)
 
       io.to(`room:${roomId}`).emit('lineup:synced', {
-        teamId: team.id,
+        teamId: team.teamId,
         lineupSlots: team.lineup,
         lockedPositions: team.lineup.filter(l => l.isLocked).map(l => l.position),
       })
@@ -477,11 +549,13 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
 
       // Check if all approved teams have locked this position
       const approvedTeams = room.teams.filter(t => t.claimStatus === 'APPROVED')
+      const positionEnum = positionToEnum(position)
+      const positionNum = position
       const allLockedAtPosition = approvedTeams.every(t => 
-        t.lineup?.find(l => l.position === position)?.isLocked
+        t.lineup?.find(l => l.position === positionNum)?.isLocked
       )
 
-      if (allLockedAtPosition && room.status === 'MATCH' && room.currentPosition === position) {
+      if (allLockedAtPosition && room.status === 'MATCH' && room.currentPosition === positionEnum) {
         // All teams locked this position - trigger next phase
         await startRoundCountdown(roomId)
       }
@@ -507,12 +581,12 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
       // Update room status
       await prisma.room.update({
         where: { id: roomId },
-        data: { status: 'MATCH', currentRound: 1, currentPosition: 1 },
+        data: { status: 'MATCH', currentRound: 1, currentPosition: positionToEnum(1) },
       })
 
       room.status = 'MATCH'
       room.currentRound = 1
-      room.currentPosition = 1
+      room.currentPosition = positionToEnum(1)
       setRoomCache(roomId, room)
 
       // Start Round 1 (Openers - positions 1 & 2)
@@ -527,14 +601,14 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
     if (!room) return
 
     // Round 1 = positions 1 & 2 (openers), subsequent rounds = single position
-    const positionsThisRound = room.currentRound === 1 ? [1, 2] : [room.currentPosition]
+    const positionsThisRound = room.currentRound === 1 ? [1, 2] : [enumToPositionNumber(room.currentPosition)]
 
     // Create round in DB
     const round = await prisma.round.create({
       data: {
         roomId,
         roundNumber: room.currentRound,
-        position: room.currentPosition,
+        position: positionToEnum(enumToPositionNumber(room.currentPosition)),
         phase: 'COUNTDOWN',
         startedAt: new Date(),
       },
@@ -546,7 +620,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
       position: round.position,
       phase: 'COUNTDOWN',
       aiResponse: null,
-      startedAt: round.startedAt.toISOString(),
+      startedAt: round.startedAt?.toISOString() || new Date().toISOString(),
       completedAt: null,
     } as any)
 
@@ -555,7 +629,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
     // Emit countdown
     io.to(`room:${roomId}`).emit('round:start', {
       roundNumber: room.currentRound,
-      position: room.currentPosition,
+      position: enumToPosition(room.currentPosition),
       countdown: 3,
     })
 
@@ -578,7 +652,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
         const slot = team.lineup.find(l => l.position === pos)
         if (slot?.player) {
           picks.push({
-            teamId: team.id,
+            teamId: team.teamId,
             teamShortName: team.shortName,
             teamColor: team.color,
             playerId: slot.player.id,
@@ -611,6 +685,9 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
   async function getAIRanking(roomId: string, picks: PickState[], positions: number[]) {
     // TODO: Call Grok API
     // For now, deterministic fallback by price
+    const room = getRoomCache(roomId)
+    if (!room) return
+    
     const ranked = picks
       .sort((a, b) => b.price - a.price)
       .map((pick, index) => ({
@@ -683,11 +760,11 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
         const roundScores = room.rounds
           .filter(r => r.phase === 'COMPLETED')
           .flatMap(r => r.scores || [])
-          .filter(s => s.teamId === team.id)
+          .filter(s => s.teamId === team.teamId)
         const total = roundScores.reduce((sum, s) => sum + s.points, 0)
         const lastRoundScore = roundScores.find(s => s.roundId === round.id)
         return {
-          teamId: team.id,
+          teamId: team.teamId,
           teamShortName: team.shortName,
           teamColor: team.color,
           ownerName: team.ownerName || 'Unknown',
@@ -708,7 +785,7 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents, 
 
     // Advance to next round
     room.currentRound++
-    room.currentPosition = room.currentRound === 1 ? 2 : room.currentRound + 1
+    room.currentPosition = positionToEnum(room.currentRound === 1 ? 2 : room.currentRound + 1)
 
     await prisma.room.update({
       where: { id: roomId },

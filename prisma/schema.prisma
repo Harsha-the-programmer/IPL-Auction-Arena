@@ -100,6 +100,7 @@ model Team {
   participants        Participant[]
 
   @@unique([roomId, teamId])
+  @@unique([roomId, id])
   @@index([roomId, claimStatus])
   @@map("teams")
 }
@@ -107,7 +108,7 @@ model Team {
 model Player {
   id            String       @id @default(cuid())
   roomId        String       @map("room_id")
-  teamId        String       @map("team_id")
+  teamId        String       @map("team_id") // References Team.id (UUID)
   playerId      String       @map("player_id") // Unique from auction game
   name          String
   role          PlayerRole
@@ -116,7 +117,7 @@ model Player {
   auctionData   Json         // Full player object from auction game
 
   room          Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  team          Team         @relation(fields: [roomId, teamId], references: [roomId, teamId], onDelete: Cascade)
+  team          Team         @relation(fields: [roomId, teamId], references: [roomId, id], onDelete: Cascade)
   lineupSlots   LineupSlot[]
   picks         Pick[]
 
@@ -130,14 +131,14 @@ model Participant {
   roomId        String   @map("room_id")
   socketId      String   @unique @map("socket_id")
   displayName   String   @map("display_name")
-  teamId        String?  @map("team_id") // Null if spectator
+  teamId        String?  @map("team_id") // References Team.id (UUID)
   isHost        Boolean  @default(false)
   isOnline      Boolean  @default(true)
   joinedAt      DateTime @default(now()) @map("joined_at")
   lastSeenAt    DateTime @default(now()) @map("last_seen_at")
 
   room          Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  team          Team?    @relation(fields: [roomId, teamId], references: [roomId, teamId], onDelete: SetNull)
+  team          Team?    @relation(fields: [roomId, teamId], references: [roomId, id], onDelete: SetNull)
 
   @@index([roomId, isOnline])
   @@map("participants")
@@ -146,12 +147,12 @@ model Participant {
 model Lineup {
   id        String   @id @default(cuid())
   roomId    String   @map("room_id")
-  teamId    String   @map("team_id")
+  teamId    String   @map("team_id") // References Team.id (UUID)
   isLocked  Boolean  @default(false) @map("is_locked") // Entire lineup locked (all 11)
   lockedAt  DateTime? @map("locked_at")
 
   room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  team      Team     @relation(fields: [roomId, teamId], references: [roomId, teamId], onDelete: Cascade)
+  team      Team     @relation(fields: [roomId, teamId], references: [roomId, id], onDelete: Cascade)
   slots     LineupSlot[]
 
   @@unique([roomId, teamId])
@@ -162,15 +163,14 @@ model LineupSlot {
   id              String           @id @default(cuid())
   lineupId        String           @map("lineup_id")
   position        LineupPosition   // 1-11
-  playerId        String           @map("player_id")
+  playerId        String?          @map("player_id")
   isLocked        Boolean          @default(false) @map("is_locked") // This position locked
   lockedAtRound   Int?             @map("locked_at_round") // Which round locked it
 
   lineup          Lineup           @relation(fields: [lineupId], references: [id], onDelete: Cascade)
-  player          Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player          Player?          @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@unique([lineupId, position])
-  @@unique([lineupId, playerId])
   @@map("lineup_slots")
 }
 
@@ -200,7 +200,7 @@ model Pick {
   position      LineupPosition   // Position being revealed this round
 
   round         Round            @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  team          Team             @relation(fields: [roundId, teamId], references: [roomId, teamId], onDelete: Cascade)
+  team          Team             @relation(fields: [roundId, teamId], references: [roomId, id], onDelete: Cascade)
   player        Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@unique([roundId, teamId])
@@ -218,7 +218,7 @@ model Score {
 
   room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   round     Round    @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  team      Team     @relation(fields: [roomId, teamId], references: [roomId, teamId], onDelete: Cascade)
+  team      Team     @relation(fields: [roomId, teamId], references: [roomId, id], onDelete: Cascade)
 
   @@unique([roundId, teamId])
   @@map("scores")

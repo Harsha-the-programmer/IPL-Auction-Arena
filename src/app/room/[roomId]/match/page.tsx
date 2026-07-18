@@ -2,36 +2,70 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { io, Socket } from 'socket.io-client'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Trophy, Crown, Timer, Bot, Zap, Pause, Play, 
   SkipForward, X, CheckCircle, Loader2, AlertCircle,
-  ChevronLeft, Share2, Download, Camera
+  ChevronLeft, Share2
 } from 'lucide-react'
 import { cn, formatPrice, getTeamInfo, IPL_TEAMS } from '@/lib/utils'
 import type { RoomState, TeamState, PickState, AIRanking, ScoreState, TeamScore } from '@/lib/types'
+import { useSocket } from '@/lib/socket-context'
 
-const POSITION_NAMES = ['', 'OPENER 1', 'OPENER 2', '#3', '#4', '#5', '#6', '#7', '#8', '#9', '#10', '#11']
+const POSITION_NAMES = ['', 'OPENER 1', 'OPENER 2', '#3', '#4', '#5', '#6', '#6', '#7', '#8', '#9', '#10', '#11']
 const POSITION_BADGES = ['', 'OPENER', 'OPENER', '#3', '#4', '#5', '#6', '#7', '#8', '#9', '#10', '#11']
+const POSITION_ENUM_TO_INDEX: Record<string, number> = {
+  'OPENER_1': 1,
+  'OPENER_2': 2,
+  'THREE': 3,
+  'FOUR': 4,
+  'FIVE': 5,
+  'SIX': 6,
+  'SEVEN': 7,
+  'EIGHT': 8,
+  'NINE': 9,
+  'TEN': 10,
+  'ELEVEN': 11,
+}
+
+// Extended types with joined data from room
+interface EnrichedRanking extends AIRanking {
+  teamColor: string
+  playerName: string
+  points: number
+}
+
+interface EnrichedScore extends ScoreState {
+  teamShortName: string
+  teamOwnerName: string
+  teamColor: string
+}
+
+interface EnrichedTeamScore extends TeamScore {
+  rank: number
+}
 
 export default function MatchPage() {
   const params = useParams()
   const router = useRouter()
   const roomId = params.roomId as string
 
-  const [socket, setSocket] = useState<Socket | null>(null)
-  const [room, setRoom] = useState<RoomState | null>(null)
-  const [myTeam, setMyTeam] = useState<TeamState | null>(null)
+  const { 
+    socket, 
+    room, 
+    myTeam, 
+    isHost, 
+    error: socketError,
+  } = useSocket()
+
   const [phase, setPhase] = useState<'PENDING' | 'COUNTDOWN' | 'REVEALED' | 'RANKING' | 'COMPLETED'>('PENDING')
   const [countdown, setCountdown] = useState(3)
   const [picks, setPicks] = useState<PickState[]>([])
-  const [ranking, setRanking] = useState<AIRanking[]>([])
-  const [points, setPoints] = useState<ScoreState[]>([])
-  const [leaderboard, setLeaderboard] = useState<TeamScore[]>([])
-  const [finalStandings, setFinalStandings] = useState<TeamScore[]>([])
-  const [winner, setWinner] = useState<TeamScore | null>(null)
-  const [isHost, setIsHost] = useState(false)
+  const [ranking, setRanking] = useState<EnrichedRanking[]>([])
+  const [points, setPoints] = useState<EnrichedScore[]>([])
+  const [leaderboard, setLeaderboard] = useState<EnrichedTeamScore[]>([])
+  const [finalStandings, setFinalStandings] = useState<EnrichedTeamScore[]>([])
+  const [winner, setWinner] = useState<EnrichedTeamScore | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [waitingFor, setWaitingFor] = useState<string[]>([])
   const [showShare, setShowShare] = useState(false)
@@ -39,31 +73,49 @@ export default function MatchPage() {
   const countdownRef = useRef(countdown)
   countdownRef.current = countdown
 
-  // Initialize socket
-  useEffect(() => {
-    const newSocket = io(process.env.NEXT_PUBLIC_APP_URL || '', {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
-    })
-
-    newSocket.on('connect', () => {
-      newSocket.emit('room:join', { roomId, displayName: '' })
-    })
-
-    newSocket.on('room:state', (state: RoomState) => {
-      setRoom(state)
-      const participant = state.participants.find(p => p.socketId === newSocket.id)
-      if (participant?.teamId) {
-        const team = state.teams.find(t => t.id === participant.teamId)
-        if (team) setMyTeam(team)
+  // Helper to enrich ranking data
+  const enrichRanking = (rawRanking: AIRanking[], picksData: PickState[], pointsData: ScoreState[]): EnrichedRanking[] => {
+    return rawRanking.map(r => {
+      const pick = picksData.find(p => p.playerId === r.playerId)
+      const point = pointsData.find(p => p.teamId === r.teamId)
+      const team = room?.teams.find(t => t.teamId === r.teamId)
+      return {
+        ...r,
+        teamColor: team?.color || '#64748b',
+        playerName: pick?.playerName || 'Unknown',
+        points: point?.points || 0,
       }
-      setIsHost(state.hostSocketId === newSocket.id)
     })
+  }
 
-    newSocket.on('round:start', (data: { roundNumber: number; position: number; countdown: number }) => {
+  // Helper to enrich score data
+  const enrichPoints = (rawPoints: ScoreState[]): EnrichedScore[] => {
+    return rawPoints.map(p => {
+      const team = room?.teams.find(t => t.teamId === p.teamId)
+      return {
+        ...p,
+        teamShortName: team?.shortName || '??',
+        teamOwnerName: team?.ownerName || 'Unknown',
+        teamColor: team?.color || '#64748b',
+      }
+    })
+  }
+
+  // Helper to enrich leaderboard
+  const enrichLeaderboard = (rawLeaderboard: TeamScore[]): EnrichedTeamScore[] => {
+    return rawLeaderboard.map((team, index) => ({
+      ...team,
+      rank: index + 1,
+    }))
+  }
+
+  // Initialize socket listeners
+  useEffect(() => {
+    if (!socket) return
+
+    socket.on('round:start', (data: { roundNumber: number; position: number; countdown: number }) => {
       setPhase('COUNTDOWN')
       setCountdown(data.countdown)
-      // Start countdown animation
       let current = data.countdown
       const interval = setInterval(() => {
         current--
@@ -72,50 +124,63 @@ export default function MatchPage() {
       }, 1000)
     })
 
-    newSocket.on('round:reveal', (data: { picks: PickState[] }) => {
+    socket.on('round:reveal', (data: { picks: PickState[] }) => {
       setPhase('REVEALED')
       setPicks(data.picks)
     })
 
-    newSocket.on('round:ranking', (data: { ranking: AIRanking[]; points: ScoreState[] }) => {
+    socket.on('round:ranking', (data: { ranking: AIRanking[]; points: ScoreState[] }) => {
       setPhase('RANKING')
-      setRanking(data.ranking)
-      setPoints(data.points)
+      setRanking(enrichRanking(data.ranking, picks, data.points))
+      setPoints(enrichPoints(data.points))
     })
 
-    newSocket.on('round:complete', (data: { leaderboard: TeamScore[] }) => {
+    socket.on('round:complete', (data: { leaderboard: TeamScore[] }) => {
       setPhase('COMPLETED')
-      setLeaderboard(data.leaderboard)
+      setLeaderboard(enrichLeaderboard(data.leaderboard))
       setTimeout(() => setPhase('PENDING'), 2000)
     })
 
-    newSocket.on('match:complete', (data: { finalStandings: TeamScore[]; winner: TeamScore }) => {
-      setFinalStandings(data.finalStandings)
-      setWinner(data.winner)
+    socket.on('match:complete', (data: { finalStandings: TeamScore[]; winner: TeamScore }) => {
+      setFinalStandings(enrichLeaderboard(data.finalStandings))
+      setWinner({ ...data.winner, rank: 1 })
       router.push(`/room/${roomId}/results`)
     })
 
-    newSocket.on('pending:update', (data: { waitingFor: string[] }) => {
+    socket.on('pending:update', (data: { waitingFor: string[] }) => {
       setWaitingFor(data.waitingFor)
     })
 
-    newSocket.on('host:changed', (newHostId: string) => {
-      setIsHost(newHostId === newSocket.id)
+    socket.on('host:changed', (newHostSocketId: string) => {
+      // isHost will be updated via room state
     })
 
-    newSocket.on('error', (message: string) => {
+    socket.on('error', (message: string) => {
       setError(message)
-      setTimeout(() => setError(null), 5000)
     })
 
-    newSocket.on('disconnect', () => {
-      setError('Disconnected. Reconnecting...')
+    socket.on('disconnect', () => {
+      setError('Disconnected from server. Reconnecting...')
     })
 
-    setSocket(newSocket)
+    socket.on('connect_error', (err) => {
+      console.error('[Socket] Connection error:', err)
+      setError('Connection failed. Retrying...')
+    })
 
-    return () => newSocket.close()
-  }, [roomId, router])
+    return () => {
+      socket.off('round:start')
+      socket.off('round:reveal')
+      socket.off('round:ranking')
+      socket.off('round:complete')
+      socket.off('match:complete')
+      socket.off('pending:update')
+      socket.off('host:changed')
+      socket.off('error')
+      socket.off('disconnect')
+      socket.off('connect_error')
+    }
+  }, [socket, roomId, router, room, picks])
 
   const handlePause = () => socket?.emit('match:pause')
   const handleResume = () => socket?.emit('match:resume')
@@ -126,9 +191,10 @@ export default function MatchPage() {
     const url = window.location.href
     try {
       await navigator.clipboard.writeText(url)
-      alert('Room link copied!')
+      setShowShare(true)
+      setTimeout(() => setShowShare(false), 2000)
     } catch {
-      prompt('Copy this link:', url)
+      setError('Failed to copy link')
     }
   }
 
@@ -141,9 +207,7 @@ export default function MatchPage() {
   }
 
   const currentRound = room.currentRound || 1
-  const currentPosition = room.currentPosition || 1
   const totalRounds = 10
-  const progress = (currentRound / totalRounds) * 100
 
   return (
     <div className="min-h-screen bg-neutral-950 flex flex-col">
@@ -157,20 +221,9 @@ export default function MatchPage() {
               </span>
               <div className="flex items-center gap-2 text-sm text-neutral-400">
                 <span>Round</span>
-                <span className="font-bold text-amber-400 font-mono">{currentRound}/{totalRounds}</span>
+                <span className="font-bold text-amber-400 font-mono">{room.currentRound || 1}/{totalRounds}</span>
                 <span className="text-neutral-600">•</span>
-                <span className="badge bg-neutral-800 text-neutral-300">{POSITION_BADGES[currentPosition]}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="w-48 h-2 bg-neutral-800 rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.5, ease: 'easeOut' }}
-                />
+                <span className="badge bg-neutral-800 text-neutral-300">{POSITION_BADGES[POSITION_ENUM_TO_INDEX[room.currentPosition || 'OPENER_1'] || 1]}</span>
               </div>
             </div>
 
@@ -202,26 +255,57 @@ export default function MatchPage() {
       {/* Main Arena */}
       <main className="flex-1 overflow-hidden flex">
         {/* Left: Leaderboard Sidebar */}
-        <aside className="w-full lg:w-64 lg:flex-shrink-0 border-r border-neutral-800 bg-neutral-900/30 p-4 overflow-y-auto hidden lg:block">
+        <aside className="w-64 flex-shrink-0 hidden lg:block border-r border-neutral-800 bg-neutral-900/30 p-4 overflow-y-auto">
           <div className="sticky top-4">
-            <h3 className="font-semibold text-amber-400 flex items-center gap-2 mb-4">
+            <h3 className="font-semibold text-amber-400 mb-3 flex items-center gap-2">
               <Trophy className="w-5 h-5" />
               LIVE SCORES
             </h3>
             <div className="space-y-2">
-              {leaderboard.length > 0 ? leaderboard : room.teams
-                .filter(t => t.claimStatus === 'APPROVED')
-                .map(team => {
+              {leaderboard.length > 0 ? (
+                leaderboard.map((score) => {
+                  const team = room?.teams.find(t => t.teamId === score.teamId)
+                  if (!team) return null
+                  return (
+                    <div key={team.id} className={`flex items-center gap-3 p-2 rounded-xl transition-all ${score.rank === 1 ? 'bg-amber-500/10 border border-amber-500/30' : score.rank === 2 ? 'bg-neutral-400/10 border border-neutral-400/30' : score.rank === 3 ? 'bg-amber-700/10 border border-amber-700/30' : 'bg-neutral-800/30'}`}>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0" style={{ backgroundColor: team.color }}>
+                        {team.shortName}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{team.ownerName}</p>
+                        <p className="text-xs text-neutral-500">{team.shortName}</p>
+                      </div>
+                      <span className={`text-lg font-bold ${score.rank === 1 ? 'text-amber-400' : score.rank === 2 ? 'text-neutral-300' : score.rank === 3 ? 'text-amber-600' : 'text-white'}`}>
+                        {score.total}
+                      </span>
+                      {score.rank === 1 && <Crown className="w-5 h-5 text-amber-400" />}
+                      {score.rank === 2 && <span className="w-5 h-5 text-neutral-400">🥈</span>}
+                      {score.rank === 3 && <span className="w-5 h-5 text-amber-600">🥉</span>}
+                    </div>
+                  )
+                })
+              ) : (
+                room?.teams.filter(t => t.claimStatus === 'APPROVED').map(team => {
                   const score = leaderboard.find(s => s.teamId === team.id)
                   return (
-                    <TeamScoreCard 
-                      key={team.id} 
-                      team={team} 
-                      score={score}
-                      isWinner={winner?.teamId === team.id}
-                    />
+                    <div key={team.id} className={`flex items-center gap-3 p-2 rounded-xl transition-all ${score?.rank === 1 ? 'bg-amber-500/10 border border-amber-500/30' : score?.rank === 2 ? 'bg-neutral-400/10 border border-neutral-400/30' : score?.rank === 3 ? 'bg-amber-700/10 border border-amber-700/30' : 'bg-neutral-800/30'}`}>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0" style={{ backgroundColor: team.color }}>
+                        {team.shortName}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{team.ownerName}</p>
+                        <p className="text-xs text-neutral-500">{team.shortName}</p>
+                      </div>
+                      <span className={`text-lg font-bold ${score?.rank === 1 ? 'text-amber-400' : score?.rank === 2 ? 'text-neutral-300' : score?.rank === 3 ? 'text-amber-600' : 'text-white'}`}>
+                        {score?.total || 0}
+                      </span>
+                      {score?.rank === 1 && <Crown className="w-5 h-5 text-amber-400" />}
+                      {score?.rank === 2 && <span className="w-5 h-5 text-neutral-400">🥈</span>}
+                      {score?.rank === 3 && <span className="w-5 h-5 text-amber-600">🥉</span>}
+                    </div>
                   )
-                })}
+                })
+              )}
             </div>
 
             {waitingFor.length > 0 && (
@@ -233,7 +317,7 @@ export default function MatchPage() {
 
             {myTeam && !myTeam.isLocked && phase === 'PENDING' && (
               <div className="mt-6 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                <p className="text-xs text-blue-400 font-medium">Your turn to lock Position {currentPosition}</p>
+                <p className="text-xs text-blue-400 font-medium mb-1">Your turn to lock Position {room?.currentPosition}</p>
               </div>
             )}
           </div>
@@ -262,7 +346,7 @@ export default function MatchPage() {
             {phase === 'COUNTDOWN' && (
               <motion.div
                 key="countdown"
-                className="fixed inset-0 flex items-center justify-center z-50 bg-neutral-950/90 backdrop-blur-sm"
+                className="fixed inset-0 flex items-center justify-center z-50 bg-neutral-950/90 backdrop-blur"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -271,7 +355,7 @@ export default function MatchPage() {
                   className="text-9xl lg:text-[12rem] font-bold font-mono text-amber-400"
                   initial={{ scale: 0.5, opacity: 0 }}
                   animate={{ scale: [1, 1.2, 1], opacity: 1 }}
-                  transition={{ duration: 1, repeat: countdown }}
+                  transition={{ duration: 1, repeat: countdown, repeatType: 'loop' }}
                 >
                   {countdown}
                 </motion.div>
@@ -285,20 +369,21 @@ export default function MatchPage() {
               <motion.div
                 key="reveal"
                 className="w-full max-w-5xl grid gap-4"
-                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}
+                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -30 }}
                 transition={{ duration: 0.4 }}
               >
-                {picks.map((pick, i) => (
+                {picks.map((pick, index) => (
                   <motion.div
                     key={pick.teamId}
-                    initial={{ rotateY: 90, opacity: 0 }}
-                    animate={{ rotateY: 0, opacity: 1 }}
-                    transition={{ delay: i * 0.1, duration: 0.3 }}
                     className="relative card p-4 overflow-hidden"
                     style={{ borderColor: pick.teamColor }}
+                    initial={{ rotateY: 90, opacity: 0 }}
+                    animate={{ rotateY: 0, opacity: 1 }}
+                    exit={{ opacity: 0, y: -30 }}
+                    transition={{ duration: 0.4, delay: index * 0.1 }}
                   >
                     <div className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl mb-4 mx-auto" style={{ backgroundColor: pick.teamColor }}>
                       {pick.teamShortName}
@@ -306,8 +391,8 @@ export default function MatchPage() {
                     <h4 className="text-center font-semibold text-lg">{pick.playerName}</h4>
                     <p className="text-center text-xs text-neutral-500 capitalize">{pick.role}</p>
                     <p className="text-center text-sm font-bold text-amber-400">{formatPrice(pick.price)}</p>
-                    <div className="absolute top-2 right-2 bg-green-500/20 text-green-400 text-xs px-1.5 py-0.5 rounded">
-                      LOCKED
+                    <div className="absolute top-2 right-2 bg-amber-500/20 text-amber-400 text-xs px-1.5 py-0.5 rounded">
+                      {pick.position}°
                     </div>
                   </motion.div>
                 ))}
@@ -320,50 +405,37 @@ export default function MatchPage() {
             {phase === 'RANKING' && ranking.length > 0 && (
               <motion.div
                 key="ranking"
-                className="w-full max-w-2xl card p-6"
+                className="w-full max-w-2xl"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
               >
-                <div className="flex items-center gap-2 text-amber-400 mb-4">
-                  <Bot className="w-6 h-6" />
-                  <h3 className="font-semibold text-lg">Grok Analysis - {POSITION_NAMES[currentPosition]}</h3>
-                </div>
-                <ol className="space-y-3">
-                  {ranking.map((r, i) => {
-                    const team = room.teams.find(t => t.id === r.teamId)
-                    const point = points.find(p => p.teamId === r.teamId)
-                    const teamColor = team?.color || '#64748b'
-                    const teamShort = team?.shortName || '??'
-                    
-                    return (
+                <div className="bg-card border border-warning/30 rounded-xl p-6">
+                  <div className="flex items-center gap-2 text-amber-400 mb-4">
+                    <Bot className="w-6 h-6" />
+                    <h3 className="font-semibold text-lg">Grok Analysis - {POSITION_NAMES[POSITION_ENUM_TO_INDEX[room.currentPosition || 'OPENER_1'] || 1]}</h3>
+                  </div>
+                  <ol className="space-y-3">
+                    {ranking.map((r, i) => (
                       <motion.li
                         key={r.playerId}
+                        className={`flex items-center gap-3 p-3 bg-neutral-800/50 rounded-lg ${i === 0 ? 'bg-amber-500/10 border border-amber-500/30' : i === 1 ? 'bg-neutral-400/10 border border-neutral-400/30' : i === 2 ? 'bg-amber-700/10 border border-amber-700/30' : ''}`}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.1 }}
-                        className="flex items-center gap-3 p-3 bg-neutral-800/50 rounded-lg"
+                        transition={{ duration: 0.3, delay: i * 0.1 }}
                       >
-                        <span className={cn(
-                          'w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0',
-                          i === 0 ? 'bg-amber-500/30 text-amber-400' :
-                          i === 1 ? 'bg-neutral-400/30 text-neutral-300' :
-                          i === 2 ? 'bg-amber-700/30 text-amber-600' :
-                          'bg-transparent'
-                        )}>
+                        <span className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${i === 0 ? 'bg-amber-500/30 text-amber-400' : i === 1 ? 'bg-neutral-400/30 text-neutral-300' : i === 2 ? 'bg-amber-700/30 text-amber-600' : 'bg-transparent'}`}>
                           {i + 1}
                         </span>
-                        <div className="flex-1 min-w-0" style={{ borderLeftColor: teamColor }}>
-                          <p className="font-medium">{ranking.find(rk => rk.playerId === r.playerId)?.playerId} <span className="text-xs text-neutral-500">({teamShort})</span></p>
-                          <p className="text-xs text-neutral-500">{r.reasoning}</p>
+                        <div className="flex-1 min-w-0" style={{ borderLeftColor: r.teamColor }}>
+                          <p className="font-medium">{r.playerName}</p>
+                          <p className="text-xs text-neutral-500 capitalize">{r.reasoning}</p>
                         </div>
-                        {point && (
-                          <span className="text-sm font-bold text-amber-400">+{point.points} pts</span>
-                        )}
+                        <span className="text-sm font-bold text-amber-400">+{r.points} pts</span>
                       </motion.li>
-                    )
-                  })}
-                </ol>
+                    ))}
+                  </ol>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -373,31 +445,37 @@ export default function MatchPage() {
             {phase === 'COMPLETED' && points.length > 0 && (
               <motion.div
                 key="points"
-                className="w-full max-w-2xl card p-4"
-                initial={{ opacity: 0, y: 10 }}
+                className="w-full max-w-2xl"
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
               >
-                <h4 className="font-semibold text-amber-400 mb-3 flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5" />
-                  Points Awarded
-                </h4>
-                <div className="space-y-2">
-                  {points.sort((a, b) => b.points - a.points).map(p => {
-                    const team = room.teams.find(t => t.id === p.teamId)
-                    return (
-                      <div key={p.teamId} className="flex items-center justify-between p-2 bg-neutral-800/50 rounded-lg">
+                <div className="bg-card border border-warning/30 rounded-xl p-4">
+                  <h4 className="font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5" />
+                    Points Awarded - {POSITION_NAMES[POSITION_ENUM_TO_INDEX[room.currentPosition || 'OPENER_1'] || 1]}
+                  </h4>
+                  <div className="space-y-2">
+                    {points.sort((a, b) => b.points - a.points).map((p, i) => (
+                      <motion.li
+                        key={p.teamId}
+                        className="flex items_center justify-between p-2 bg-neutral-800/50 rounded-lg"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: i * 0.1 }}
+                      >
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: team?.color }}>
-                            {team?.shortName}
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: p.teamColor }}>
+                            {p.teamShortName}
                           </div>
-                          <span className="font-medium">{team?.ownerName}</span>
+                          <span className="font-medium">{p.teamOwnerName}</span>
                         </div>
                         <span className={cn('font-bold text-lg', p.rank === 1 ? 'text-amber-400' : 'text-white')}>
                           +{p.points}
                         </span>
-                      </div>
-                    )
-                  })}
+                      </motion.li>
+                    ))}
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -409,7 +487,7 @@ export default function MatchPage() {
               <Loader2 className="w-12 h-12 text-amber-500 animate-spin mx-auto mb-4" />
               <p className="text-neutral-400">
                 {waitingFor.length > 0 
-                  ? `Waiting for ${waitingFor.join(', ')} to lock Position ${currentPosition}`
+                  ? `Waiting for ${waitingFor.join(', ')} to lock Position ${room?.currentPosition}`
                   : 'All players locked. Starting next round...'}
               </p>
             </div>
@@ -433,17 +511,17 @@ export default function MatchPage() {
         </div>
 
         {/* Right: Recent Activity (Mobile hidden) */}
-        <aside className="w-full lg:w-64 lg:flex-shrink-0 border-l border-neutral-800 bg-neutral-900/30 p-4 overflow-y-auto hidden lg:block">
+        <aside className="w-64 flex-shrink-0 hidden lg:block border-l border-neutral-800 bg-neutral-900/30 p-4 overflow-y-auto">
           <h4 className="font-semibold text-amber-400 mb-3">RECENT ACTIVITY</h4>
           <div className="space-y-2 text-sm">
             {phase === 'RANKING' && ranking.slice(0, 3).map((r, i) => (
               <div key={r.playerId} className="p-2 bg-neutral-800/50 rounded-lg">
-                <p className="font-medium">#{i + 1}: {ranking.find(rk => rk.playerId === r.playerId)?.playerId}</p>
+                <p className="font-medium">#{r.rank}: {r.playerName}</p>
                 <p className="text-xs text-neutral-500">{r.reasoning}</p>
               </div>
             ))}
-            {phase === 'COMPLETED' && points.map(p => {
-              const team = room.teams.find(t => t.id === p.teamId)
+            {phase === 'COMPLETED' && points.map((p, i) => {
+              const team = room?.teams.find(t => t.teamId === p.teamId)
               return (
                 <div key={p.teamId} className="p-2 bg-neutral-800/50 rounded-lg">
                   <div className="flex items-center justify-between">
@@ -453,44 +531,46 @@ export default function MatchPage() {
                 </div>
               )
             })}
+            {phase === 'PENDING' && waitingFor.length > 0 && (
+              <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <p className="text-xs text-amber-400 font-medium mb-1">Waiting for:</p>
+                <p className="text-sm">{waitingFor.join(', ')}</p>
+              </div>
+            )}
           </div>
         </aside>
       </main>
 
       {/* Error Toast */}
       {error && (
-        <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-4">
-          <div className="card p-4 flex items-center gap-3 max-w-md shadow-xl">
-            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-            <p className="text-sm">{error}</p>
+        <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-2">
+          <div className="bg-red-500/90 border border-red-500 text-white px-4 py-3 rounded-lg shadow-xl max-w-md shadow-xl">
+            <AlertCircle className="w-5 h-5 inline-block mr-2" />
+            {error}
           </div>
         </div>
       )}
-    </div>
-  )
-}
 
-function TeamScoreCard({ team, score, isWinner }: { team: TeamState; score: ScoreState | undefined; isWinner: boolean }) {
-  return (
-    <div className={cn(
-      'p-3 rounded-xl flex items-center gap-3 transition-all',
-      isWinner ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-neutral-800/50 border border-neutral-700'
-    )}>
-      <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0" style={{ backgroundColor: team.color }}>
-        {team.shortName}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{team.ownerName}</p>
-        <p className="text-xs text-neutral-500">
-          {score ? `Last: +${score.points} (Rank ${score.rank})` : 'Not started'}
-        </p>
-      </div>
-      <div className="text-right">
-        <p className={cn('text-lg font-bold', isWinner ? 'text-amber-400' : 'text-white')}>
-          {score?.total || 0}
-        </p>
-        {isWinner && <Crown className="w-5 h-5 text-amber-400 mx-auto" />}
-      </div>
+      {/* Share Modal */}
+      {showShare && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <motion.div
+            className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full animate-in zoom-in-95"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+          >
+            <div className="text-center mb-4">
+              <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
+              <h3 className="text-xl font-bold text-green-400 mb-2">Link Copied!</h3>
+              <p className="text-neutral-400">Share this link with friends to join the arena.</p>
+            </div>
+            <button onClick={() => setShowShare(false)} className="btn-primary w-full py-3">
+              Got it
+            </button>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }

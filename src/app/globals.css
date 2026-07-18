@@ -4,8 +4,8 @@
 
 @layer base {
   :root {
-    --font-geist-sans: 'Geist', system-ui, sans-serif;
-    --font-geist-mono: 'Geist Mono', monospace;
+    --font-inter: 'Inter', system-ui, sans-serif;
+    --font-jetbrains-mono: 'JetBrains Mono', monospace;
   }
   
   * {

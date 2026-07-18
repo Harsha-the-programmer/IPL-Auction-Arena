@@ -2,154 +2,53 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { io, Socket } from 'socket.io-client'
-import { cn } from '@/lib/utils'
+import Link from 'next/link'
 import { 
   Users, Crown, Loader2, CheckCircle, XCircle, 
   AlertCircle, Copy, Share2, Lock, Unlock, 
   ChevronLeft, Plus, Minus, GripVertical,
   Timer, Bot, Trophy
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { IPL_TEAMS, getTeamInfo, formatPrice } from '@/lib/utils'
 import type { RoomState, TeamState, ParticipantState, LineupSlotState } from '@/lib/types'
-
-const SOCKET_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+import { useSocket } from '@/lib/socket-context'
 
 export default function RoomPage({ params }: { params: { roomId: string } }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const roomId = params.roomId
 
-  const [socket, setSocket] = useState<Socket | null>(null)
-  const [room, setRoom] = useState<RoomState | null>(null)
-  const [mySocketId, setMySocketId] = useState<string>('')
-  const [displayName, setDisplayName] = useState('')
-  const [isHost, setIsHost] = useState(false)
+  const { 
+    socket, room, mySocketId, displayName, setDisplayName, 
+    isHost, error, 
+    isLoading, leaveRoom 
+  } = useSocket()
+
   const [showNameModal, setShowNameModal] = useState(false)
   const [pendingTeamId, setPendingTeamId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [localError, setLocalError] = useState<string | null>(null)
 
-  // Initialize socket
+  // Join room when component mounts
   useEffect(() => {
-    const newSocket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-    })
-
-    newSocket.on('connect', () => {
-      console.log('[Socket] Connected:', newSocket.id)
-      setMySocketId(newSocket.id)
-      newSocket.emit('room:join', { roomId, displayName: displayName || 'Player' })
-    })
-
-    newSocket.on('disconnect', (reason) => {
-      console.log('[Socket] Disconnected:', reason)
-    })
-
-    newSocket.on('connect_error', (err) => {
-      console.error('[Socket] Connection error:', err)
-      setError('Connection failed. Retrying...')
-    })
-
-    // Room state
-    newSocket.on('room:state', (state: RoomState) => {
-      console.log('[Socket] Room state received')
-      setRoom(state)
-      const me = state.participants.find(p => p.socketId === newSocket.id)
-      if (me) {
-        setDisplayName(me.displayName)
-        setIsHost(me.isHost)
-        if (me.teamId) {
-          router.replace(`/room/${roomId}/lineup`)
-        }
-      }
-      setShowNameModal(!me || !me.displayName)
-    })
-
-    newSocket.on('user:joined', (user: ParticipantState) => {
-      setRoom(prev => prev ? {
-        ...prev,
-        participants: [...prev.participants.filter(p => p.socketId !== user.socketId), user]
-      } : null)
-    })
-
-    newSocket.on('user:left', (socketId: string) => {
-      setRoom(prev => prev ? {
-        ...prev,
-        participants: prev.participants.filter(p => p.socketId !== socketId)
-      } : null)
-    })
-
-    newSocket.on('team:claimed', (data) => {
-      setRoom(prev => prev ? {
-        ...prev,
-        teams: prev.teams.map(t => 
-          t.teamId === data.teamId 
-            ? { ...t, claimStatus: 'APPROVED', ownerSocketId: data.userId, ownerName: data.displayName }
-            : t
-        )
-      } : null)
-    })
-
-    newSocket.on('team:requested', (data) => {
-      if (isHost) {
-        setRoom(prev => prev ? {
-          ...prev,
-          teams: prev.teams.map(t => 
-            t.teamId === data.teamId 
-              ? { ...t, claimStatus: 'PENDING', requestedBySocketId: data.userId, requestedByName: data.displayName }
-              : t
-          )
-        } : null)
-      }
-    })
-
-    newSocket.on('team:approved', (data) => {
-      setRoom(prev => prev ? {
-        ...prev,
-        teams: prev.teams.map(t => 
-          t.teamId === data.teamId 
-            ? { ...t, claimStatus: 'APPROVED', ownerSocketId: data.userId, ownerName: data.displayName, requestedBySocketId: null, requestedByName: null }
-            : t
-        )
-      } : null)
-      // If it's me, redirect to lineup
-      if (data.userId === mySocketId) {
-        router.push(`/room/${roomId}/lineup`)
-      }
-    })
-
-    newSocket.on('team:rejected', (data) => {
-      setRoom(prev => prev ? {
-        ...prev,
-        teams: prev.teams.map(t => 
-          t.teamId === data.teamId 
-            ? { ...t, claimStatus: 'UNCLAIMED', requestedBySocketId: null, requestedByName: null }
-            : t
-        )
-      } : null)
-      if (data.userId === mySocketId) {
-        setError('Your team request was rejected. Please choose another team.')
-      }
-    })
-
-    newSocket.on('host:changed', (newHostSocketId: string) => {
-      setIsHost(newHostSocketId === mySocketId)
-    })
-
-    newSocket.on('error', (message: string) => {
-      setError(message)
-    })
-
-    setSocket(newSocket)
-
-    return () => {
-      newSocket.close()
+    if (roomId) {
+      // The socket context will handle the connection
     }
-  }, [roomId, router, isHost, mySocketId])
+  }, [roomId])
+
+  // Handle name submission
+  const handleNameSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (displayName.trim()) {
+      // The socket context will handle the join
+      setShowNameModal(false)
+      if (pendingTeamId) {
+        socket?.emit('team:request', { teamId: pendingTeamId })
+        setPendingTeamId(null)
+      }
+    }
+  }
 
   // Copy room link
   const copyLink = () => {
@@ -171,37 +70,9 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       return
     }
     setPendingTeamId(teamId)
-    socket?.emit('team:request', { teamId })
   }
 
-  // Approve/Reject team (host only)
-  const approveTeam = (teamId: string, userId: string) => {
-    socket?.emit('team:approve', { teamId, socketId: userId })
-  }
-
-  const rejectTeam = (teamId: string, userId: string) => {
-    socket?.emit('team:reject', { teamId, socketId: userId })
-  }
-
-  // Start match (host only)
-  const startMatch = () => {
-    socket?.emit('match:start', {})
-  }
-
-  // Submit name
-  const handleNameSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (displayName.trim()) {
-      socket?.emit('room:join', { roomId, displayName: displayName.trim() })
-      setShowNameModal(false)
-      if (pendingTeamId) {
-        socket?.emit('team:request', { teamId: pendingTeamId })
-        setPendingTeamId(null)
-      }
-    }
-  }
-
-  if (!room) {
+  if (!room && !isLoading) {
     return (
       <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
         <Loader2 className="w-10 h-10 text-amber-500 animate-spin" />
@@ -209,9 +80,9 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     )
   }
 
-  const myTeam = room.teams.find(t => t.ownerSocketId === mySocketId)
-  const pendingTeams = room.teams.filter(t => t.claimStatus === 'PENDING')
-  const approvedTeams = room.teams.filter(t => t.claimStatus === 'APPROVED')
+  const myTeam = room?.teams.find(t => t.ownerSocketId === mySocketId)
+  const pendingTeams = room?.teams.filter(t => t.claimStatus === 'PENDING') || []
+  const approvedTeams = room?.teams.filter(t => t.claimStatus === 'APPROVED') || []
   const allLocked = approvedTeams.length > 0 && approvedTeams.every(t => t.isLocked)
 
   return (
@@ -225,7 +96,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
           
           <div className="flex-1 text-center">
             <h1 className="font-bold text-lg">Room: <span className="font-mono text-amber-400 tracking-widest">{roomId}</span></h1>
-            <p className="text-xs text-neutral-500">{room.participants.length} / 10 players</p>
+            <p className="text-xs text-neutral-500">{room?.participants.length || 0} / 10 players</p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -242,10 +113,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       </header>
 
       {/* Error Toast */}
-      {error && (
+      {(error || localError) && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top-2 bg-red-500/90 border border-red-500 text-white px-4 py-3 rounded-lg shadow-lg">
           <AlertCircle className="w-5 h-5 inline-block mr-2" />
-          {error}
+          {error || localError}
         </div>
       )}
 
@@ -258,16 +129,16 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               <AlertCircle className="w-5 h-5" /> Pending Team Requests
             </h3>
             <div className="flex flex-wrap gap-3">
-              {pendingTeams.map(team => (
+{pendingTeams.map(team => (
                 <div key={team.teamId} className="flex items-center gap-3 px-4 py-2 bg-neutral-800/50 rounded-lg">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: team.color }}>
                     {team.shortName}
                   </div>
                   <span className="font-medium">{team.requestedByName} wants {team.name}</span>
-                  <button onClick={() => approveTeam(team.teamId, team.requestedBySocketId!)} className="btn-primary text-xs px-3 py-1">
+                  <button onClick={() => socket?.emit('team:approve', { teamId: team.teamId, socketId: team.requestedBySocketId! })} className="btn-primary text-xs px-3 py-1">
                     <CheckCircle className="w-3 h-3" /> Approve
                   </button>
-                  <button onClick={() => rejectTeam(team.teamId, team.requestedBySocketId!)} className="btn-danger text-xs px-3 py-1">
+                  <button onClick={() => socket?.emit('team:reject', { teamId: team.teamId, socketId: team.requestedBySocketId! })} className="btn-danger text-xs px-3 py-1">
                     <XCircle className="w-3 h-3" /> Reject
                   </button>
                 </div>
@@ -284,7 +155,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {IPL_TEAMS.map(teamConfig => {
-              const team = room.teams.find(t => t.teamId === teamConfig.id)
+              const team = room?.teams.find(t => t.teamId === teamConfig.id)
               if (!team) return null
 
               const isMe = team.ownerSocketId === mySocketId
@@ -365,7 +236,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
             Players in Room
           </h2>
           <div className="grid gap-2">
-            {room.participants.map(p => (
+            {room?.participants.map(p => (
               <div key={p.socketId} className="flex items-center gap-3 p-3 bg-neutral-900/50 rounded-lg">
                 <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-white font-bold text-sm">
                   {p.displayName.charAt(0).toUpperCase()}
@@ -392,7 +263,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
         {isHost && approvedTeams.length > 0 && (
           <div className="border-t border-neutral-800 pt-6">
             <button 
-              onClick={startMatch}
+              onClick={() => socket?.emit('match:start')}
               disabled={!allLocked}
               className={cn('btn-primary w-full text-lg py-4', !allLocked && 'opacity-50 cursor-not-allowed')}
             >

@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { io, Socket } from 'socket.io-client'
 import { 
   GripVertical, X, Lock, Unlock, ChevronLeft, 
   CheckCircle, Loader2, AlertCircle, Filter, 
@@ -11,7 +10,7 @@ import {
 import { 
   DndContext, closestCenter, KeyboardSensor, 
   PointerSensor, useSensor, useSensors, 
-  DragEndEvent, DragOverlay 
+  DragEndEvent
 } from '@dnd-kit/core'
 import { 
   SortableContext, sortableKeyboardCoordinates, 
@@ -20,6 +19,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { cn, formatPrice, getTeamInfo, IPL_TEAMS } from '@/lib/utils'
 import type { RoomState, TeamState, PlayerState, LineupSlotState } from '@/lib/types'
+import { useSocket } from '@/lib/socket-context'
 
 const POSITION_LABELS = ['OPENER 1', 'OPENER 2', '#3', '#4', '#5', '#6', '#7', '#8', '#9', '#10', '#11']
 const ROLE_COLORS = {
@@ -34,14 +34,24 @@ export default function LineupPage() {
   const router = useRouter()
   const roomId = params.roomId as string
 
-  const [socket, setSocket] = useState<Socket | null>(null)
-  const [room, setRoom] = useState<RoomState | null>(null)
-  const [myTeam, setMyTeam] = useState<TeamState | null>(null)
+  const { 
+    socket, 
+    room, 
+    myTeam: contextMyTeam, 
+    mySocketId, 
+    isLoading, 
+    error: socketError,
+    updateLineup,
+    lockPosition,
+  } = useSocket()
+
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'BATTER' | 'BOWLER' | 'ALL_ROUNDER' | 'WICKET_KEEPER'>('ALL')
-  const [lockedPositions, setLockedPositions] = useState<number[]>([])
   const [currentPosition, setCurrentPosition] = useState(1)
-  const [isLoading, setIsLoading] = useState(true)
+  const [lockedPositions, setLockedPositions] = useState<number[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  // Local state for lineup (will be synced with context)
+  const [myTeam, setMyTeam] = useState<TeamState | null>(null)
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -49,66 +59,21 @@ export default function LineupPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  // Initialize socket
+  // Sync context team with local state
   useEffect(() => {
-    const newSocket = io(process.env.NEXT_PUBLIC_APP_URL || '', {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
-    })
-
-    newSocket.on('connect', () => {
-      newSocket.emit('room:join', { roomId, displayName: '' }) // Name will be set via prompt
-    })
-
-    newSocket.on('room:state', (state: RoomState) => {
-      setRoom(state)
-      setIsLoading(false)
-      
-      // Find my team
-      const participant = state.participants.find(p => p.socketId === newSocket.id)
-      if (participant?.teamId) {
-        const team = state.teams.find(t => t.id === participant.teamId)
-        if (team) {
-          setMyTeam(team)
-          setLockedPositions(team.lineup?.filter(l => l.isLocked).map(l => l.position) || [])
-        }
-      }
-    })
-
-    newSocket.on('lineup:synced', (data: { teamId: string; lineupSlots: LineupSlotState[]; lockedPositions: number[] }) => {
-      if (myTeam && data.teamId === myTeam.id) {
-        setMyTeam(prev => prev ? { ...prev, lineup: data.lineupSlots } : null)
-        setLockedPositions(data.lockedPositions)
-      }
-      setRoom(prev => prev ? {
-        ...prev,
-        teams: prev.teams.map(t => t.id === data.teamId ? { ...t, lineup: data.lineupSlots } : t)
-      } : null)
-    })
-
-    newSocket.on('pending:update', (data: { waitingFor: string[] }) => {
-      // Could show waiting indicator
-    })
-
-    newSocket.on('round:start', (data: { roundNumber: number; position: number; countdown: number }) => {
-      setCurrentPosition(data.position)
-      // Position locks will be handled by lineup:synced
-    })
-
-    newSocket.on('error', (message: string) => {
-      setError(message)
-    })
-
-    newSocket.on('disconnect', () => {
-      setError('Disconnected from server. Reconnecting...')
-    })
-
-    setSocket(newSocket)
-
-    return () => {
-      newSocket.close()
+    if (contextMyTeam) {
+      setMyTeam(contextMyTeam)
     }
-  }, [roomId])
+  }, [contextMyTeam])
+
+  useEffect(() => {
+    if (room) {
+      const team = room.teams.find(t => t.ownerSocketId === mySocketId)
+      if (team) {
+        setMyTeam(team)
+      }
+    }
+  }, [room, mySocketId])
 
   // Handle drag end
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -283,48 +248,47 @@ export default function LineupPage() {
             )}
           </div>
         </div>
-
-        {/* Position progress */}
-        <div className="px-4 py-2 border-t border-neutral-800 hidden md:block">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between text-xs text-neutral-500 mb-1">
-              <span>BATTING ORDER PROGRESS</span>
-              <span>{selectedCount}/11 Players</span>
-            </div>
-            <div className="flex gap-1 overflow-x-auto pb-2">
-              {Array.from({ length: 11 }, (_, i) => {
-                const pos = i + 1
-                const isLocked = lockedPositions.includes(pos)
-                const isCurrent = pos === currentPosition && room?.status === 'MATCH'
-                const hasPlayer = myTeam.lineup?.find(s => s.position === pos)?.playerId
-                
-                return (
-                  <div 
-                    key={pos} 
-                    className={cn(
-                      'flex-shrink-0 w-16 md:w-20 flex flex-col items-center',
-                      isLocked && 'opacity-60'
-                    )}
-                  >
-                    <div className={cn(
-                      'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold mb-1 transition-all',
-                      isLocked ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                      hasPlayer ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                      'bg-neutral-800 text-neutral-500 border border-neutral-700',
-                      isCurrent && 'ring-2 ring-amber-500 animate-pulse'
-                    )}>
-                      {isLocked ? <Lock className="w-4 h-4" /> : pos}
-                    </div>
-                    <span className="text-[10px] text-center whitespace-nowrap">{POSITION_LABELS[i]}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
       </header>
 
-      {/* Main Content */}
+      {/* Position progress */}
+      <div className="px-4 py-2 border-t border-neutral-800 hidden md:block">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-between text-xs text-neutral-500 mb-1">
+            <span>BATTING ORDER PROGRESS</span>
+            <span>{selectedCount}/11 Players</span>
+          </div>
+          <div className="flex gap-1 overflow-x-auto pb-2">
+            {Array.from({ length: 11 }, (_, i) => {
+              const pos = i + 1
+              const isLocked = lockedPositions.includes(pos)
+              const isCurrent = pos === currentPosition && room?.status === 'MATCH'
+              const hasPlayer = myTeam.lineup?.find(s => s.position === pos)?.playerId
+              
+              return (
+                <div 
+                  key={pos} 
+                  className={cn(
+                    'flex-shrink-0 w-16 md:w-20 flex flex-col items-center',
+                    isLocked && 'opacity-60'
+                  )}
+                >
+                  <div className={cn(
+                    'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold mb-1 transition-all',
+                    isLocked ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                    hasPlayer ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                    'bg-neutral-800 text-neutral-500 border border-neutral-700',
+                    isCurrent && 'ring-2 ring-amber-500 animate-pulse'
+                  )}>
+                    {isLocked ? <Lock className="w-4 h-4" /> : pos}
+                  </div>
+                  <span className="text-[10px] text-center whitespace-nowrap">{POSITION_LABELS[i]}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
       <main className="flex-1 overflow-hidden flex">
         {/* Left: Batting Order */}
         <aside className="w-full lg:w-96 lg:flex-shrink-0 border-r border-neutral-800 bg-neutral-900/30 p-4 overflow-y-auto">
@@ -396,15 +360,17 @@ export default function LineupPage() {
 
           {/* Players Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {availablePlayers.map(player => (
-              <PlayerCard 
-                key={player.id} 
-                player={player} 
-                onClick={() => handleAddPlayer(player)}
-                disabled={selectedCount >= 11}
-                teamColor={teamInfo.color}
-              />
-            ))}
+            {availablePlayers.map(player => {
+                return (
+                  <PlayerCard 
+                    key={player.id} 
+                    player={player} 
+                    onClick={() => handleAddPlayer(player)}
+                    disabled={selectedCount >= 11}
+                    teamColor={teamInfo.color}
+                  />
+                )
+              })}
 
             {availablePlayers.length === 0 && (
               <div className="col-span-full text-center py-12 text-neutral-500">
@@ -433,23 +399,9 @@ export default function LineupPage() {
         </div>
       </main>
 
-      {/* Drag Overlay */}
-      <DragOverlay>
-        {({ active }) => {
-          if (!active) return null
-          const slot = myTeam?.lineup?.find(s => s.id === active.id)
-          if (!slot?.player) return null
-          return (
-            <div className="rotate-3 shadow-2xl opacity-90">
-              <PlayerCard player={slot.player} teamColor={teamInfo.color} isDragging />
-            </div>
-          )
-        }}
-      </DragOverlay>
-
       {/* Error Toast */}
       {error && (
-        <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-4">
+        <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-2">
           <div className="card p-4 flex items-center gap-3 max-w-md shadow-xl">
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
             <p className="text-sm">{error}</p>
@@ -460,7 +412,6 @@ export default function LineupPage() {
   )
 }
 
-// Lineup Slot Item Component
 function LineupSlotItem({ 
   slot, 
   index, 
@@ -524,7 +475,7 @@ function LineupSlotItem({
       <div className="flex-1 min-w-0">
         {slot.player ? (
           <>
-            <p className="font-medium truncate">{slot.player.name}</p>
+            <p className="font-medium truncate group-hover:text-amber-400 transition-colors">{slot.player.name}</p>
             <p className="text-xs text-neutral-500 flex items-center gap-1">
               <span className={cn('badge px-1.5 py-0.5 text-[10px]', ROLE_COLORS[slot.player.role])}>
                 {slot.player.role === 'ALL_ROUNDER' ? 'AR' : slot.player.role[0]}
@@ -558,13 +509,11 @@ function LineupSlotItem({
   )
 }
 
-// Player Card Component
 function PlayerCard({ 
   player, 
   onClick, 
   disabled, 
-  teamColor,
-  isDragging 
+  teamColor 
 }: { 
   player: PlayerState
   onClick?: () => void
@@ -580,7 +529,6 @@ function PlayerCard({
         'p-3 rounded-xl border transition-all text-left group',
         'bg-neutral-800/50 border-neutral-700 hover:border-amber-500/30',
         disabled && 'opacity-50 cursor-not-allowed',
-        isDragging && 'rotate-3 shadow-2xl z-50'
       )}
     >
       <div className="flex items-center gap-3 mb-2">

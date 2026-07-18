@@ -5,9 +5,8 @@ import Link from "next/link";
 import {
   Download,
   Chrome,
-  Firefox,
-  Edge,
-  Safari,
+  Globe,
+  Smartphone,
   CheckCircle,
   AlertCircle,
   Github,
@@ -40,12 +39,12 @@ export default function InstallPage() {
         },
         {
           name: "Firefox",
-          icon: Firefox,
+          icon: Globe,
           url: "https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/",
         },
         {
           name: "Safari",
-          icon: Safari,
+          icon: Smartphone,
           url: "https://apps.apple.com/app/tampermonkey/id1482490089",
         },
       ],
@@ -125,7 +124,7 @@ export default function InstallPage() {
               {steps[step - 1].desc}
             </p>
 
-            {step === 1 && (
+            {step === 1 && steps[0].browsers && (
               <div className="grid gap-3">
                 {steps[0].browsers.map((browser, i) => (
                   <a

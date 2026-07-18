@@ -2,52 +2,52 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { io, Socket } from 'socket.io-client'
 import { motion } from 'framer-motion'
 import { 
   Trophy, Crown, Medal, Share2, Copy, 
   Download, Camera, RotateCcw, ChevronLeft,
   CheckCircle, Sparkles, Zap
 } from 'lucide-react'
-import { cn, formatPrice, getTeamInfo, IPL_TEAMS } from '@/lib/utils'
+import { cn, formatPrice, getTeamInfo, IPL_TEAMS, TeamId } from '@/lib/utils'
 import type { TeamScore, TeamState } from '@/lib/types'
+import { useSocket } from '@/lib/socket-context'
 
 export default function ResultsPage() {
   const params = useParams()
   const router = useRouter()
   const roomId = params.roomId as string
 
-  const [socket, setSocket] = useState<Socket | null>(null)
+  const { 
+    socket, 
+    room 
+  } = useSocket()
+
   const [finalStandings, setFinalStandings] = useState<TeamScore[]>([])
   const [winner, setWinner] = useState<TeamScore | null>(null)
   const [roomData, setRoomData] = useState<{ teams: TeamState[] } | null>(null)
   const [copied, setCopied] = useState(false)
   const [showConfetti, setShowConfetti] = useState(true)
+  const [showShare, setShowShare] = useState(false)
 
   useEffect(() => {
-    const newSocket = io(process.env.NEXT_PUBLIC_APP_URL || '', {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
-    })
+    if (!socket) return
 
-    newSocket.on('connect', () => {
-      newSocket.emit('room:join', { roomId, displayName: '' })
-    })
-
-    newSocket.on('room:state', (state: any) => {
-      setRoomData({ teams: state.teams })
-    })
-
-    newSocket.on('match:complete', (data: { finalStandings: TeamScore[]; winner: TeamScore }) => {
+    socket.on('match:complete', (data: { finalStandings: TeamScore[]; winner: TeamScore }) => {
       setFinalStandings(data.finalStandings)
       setWinner(data.winner)
       setShowConfetti(true)
       setTimeout(() => setShowConfetti(false), 5000)
     })
 
-    setSocket(newSocket)
-    return () => newSocket.close()
-  }, [roomId])
+    socket.on('room:state', (state: any) => {
+      setRoomData({ teams: state.teams })
+    })
+
+    return () => {
+      socket.off('match:complete')
+      socket.off('room:state')
+    }
+  }, [socket, roomId])
 
   const copyLink = () => {
     navigator.clipboard.writeText(window.location.href)
@@ -129,7 +129,7 @@ export default function ResultsPage() {
               >
                 <Medal className="w-16 h-16 text-neutral-400 mb-2" />
                 <div className="w-40 h-32 bg-neutral-800/50 border border-neutral-700 rounded-t-2xl flex flex-col items-center justify-end p-4 relative">
-                  <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-2xl mb-2 mx-auto" style={{ backgroundColor: getTeamInfo(podium[1].teamId).color }}>
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-2xl mb-2 mx-auto" style={{ backgroundColor: getTeamInfo(podium[1].teamId as TeamId).color }}>
                     {podium[1].teamShortName}
                   </div>
                   <p className="font-semibold text-center">{podium[1].ownerName}</p>
@@ -151,7 +151,7 @@ export default function ResultsPage() {
                 {showConfetti && <Sparkles className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 text-amber-300 animate-spin" />}
               </div>
               <div className="w-48 h-48 bg-gradient-to-b from-amber-500/20 to-orange-500/10 border-2 border-amber-500/50 rounded-t-3xl flex flex-col items-center justify-end p-6 relative">
-                <div className="w-24 h-24 rounded-full flex items-center justify-center text-white font-bold text-3xl mb-3 mx-auto shadow-2xl shadow-amber-500/30" style={{ backgroundColor: getTeamInfo(winner.teamId).color }}>
+                <div className="w-24 h-24 rounded-full flex items-center justify-center text-white font-bold text-3xl mb-3 mx-auto shadow-2xl shadow-amber-500/30" style={{ backgroundColor: getTeamInfo(winner.teamId as TeamId).color }}>
                   {winner.teamShortName}
                 </div>
                 <p className="text-center font-bold text-xl">{winner.ownerName}</p>
@@ -173,7 +173,7 @@ export default function ResultsPage() {
               >
                 <Medal className="w-16 h-16 text-amber-700 mb-2" />
                 <div className="w-40 h-32 bg-neutral-800/50 border border-neutral-700 rounded-t-2xl flex flex-col items-center justify-end p-4">
-                  <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-2xl mb-2 mx-auto" style={{ backgroundColor: getTeamInfo(podium[2].teamId).color }}>
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-2xl mb-2 mx-auto" style={{ backgroundColor: getTeamInfo(podium[2].teamId as TeamId).color }}>
                     {podium[2].teamShortName}
                   </div>
                   <p className="font-semibold text-center">{podium[2].ownerName}</p>
@@ -202,24 +202,23 @@ export default function ResultsPage() {
             </div>
             <div className="divide-y divide-neutral-800">
               {finalStandings.map((standing, index) => {
-                const teamInfo = getTeamInfo(standing.teamId)
+                const teamInfo = getTeamInfo(standing.teamId as TeamId)
                 const isTop3 = index < 3
                 return (
                   <motion.div
                     key={standing.teamId}
                     className={cn(
                       'p-4 flex items-center gap-4 transition-colors',
-                      isTop3 && 'bg-amber-500/5',
-                      index % 2 === 0 && 'bg-neutral-900/30'
+                      index === 0 && 'bg-amber-500/5 border border-amber-500/30',
+                      index === 1 && 'bg-neutral-400/5 border border-neutral-400/30',
+                      index === 2 && 'bg-amber-700/5 border border-amber-700/30',
+                      index >= 3 && 'bg-neutral-900/30 border-b border-neutral-800/50'
                     )}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.3, delay: 0.7 + index * 0.05 }}
                   >
-                    <div className={cn(
-                      'w-12 h-12 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0',
-                      index === 0 ? 'text-2xl' : index === 1 ? 'text-xl' : 'text-lg'
-                    )} style={{ backgroundColor: teamInfo.color }}>
+                    <div className={cn('w-12 h-12 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0', index === 0 ? 'text-2xl' : index === 1 ? 'text-xl' : 'text-lg')} style={{ backgroundColor: teamInfo.color }}>
                       {standing.teamShortName}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -252,7 +251,7 @@ export default function ResultsPage() {
           </motion.div>
         </section>
 
-        {/* Round Breakdown (if we had the data) */}
+        {/* Round Breakdown */}
         {roomData && (
           <section className="mb-12">
             <motion.div
@@ -282,16 +281,15 @@ export default function ResultsPage() {
                   </thead>
                   <tbody>
                     {finalStandings.map((standing, rowIndex) => {
-                      const teamInfo = getTeamInfo(standing.teamId)
+                      const teamInfo = getTeamInfo(standing.teamId as TeamId)
                       return (
-                        <tr key={standing.teamId} className={cn('border-b border-neutral-800/50', rowIndex === 0 && 'bg-amber-500/5')}>
-                          <td className="p-3 flex items-center gap-2 font-medium">
+                        <tr key={standing.teamId} className={cn('border-b border-neutral-800/50', rowIndex === 0 && 'bg-amber-500/5', rowIndex === 1 && 'bg-neutral-400/5', rowIndex === 2 && 'bg-amber-700/5')}>
+                          <td className="p-3 flex items-center gap-2 font-medium w-24">
                             <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: teamInfo.color }}>
                               {standing.teamShortName}
                             </div>
                             {standing.ownerName}
                           </td>
-                          {/* Round scores would need to be stored - placeholder */}
                           {Array.from({ length: 10 }, (_, i) => (
                             <td key={i} className="p-3 text-center text-neutral-500">—</td>
                           ))}
