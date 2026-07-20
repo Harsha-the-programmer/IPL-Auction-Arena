@@ -1,0 +1,16 @@
+nohup: ignoring input
+
+> ipl-auction-arena@0.1.0 dev
+> tsx server.ts
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at Server.listen (node:net:2170:7)
+    at <anonymous> (/run/media/harsha/Shared/IPL-Auction-Arena/server.ts:32:6) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}

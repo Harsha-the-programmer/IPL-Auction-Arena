@@ -1,103 +1,318 @@
-'use client'
+"use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
-import { io, Socket } from 'socket.io-client'
-import type { RoomState, TeamState, ParticipantState, LineupSlotState, PickState, AIRanking, ScoreState, TeamScore } from '@/lib/types'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  ReactNode,
+} from "react";
+import { io, Socket } from "socket.io-client";
+import type {
+  RoomState,
+  TeamState,
+  ParticipantState,
+  LineupSlotState,
+  PickState,
+  AIRanking,
+  ScoreState,
+  TeamScore,
+} from "@/lib/types";
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const SOCKET_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 interface SocketContextType {
-  socket: Socket | null
-  room: RoomState | null
-  myTeam: TeamState | null
-  mySocketId: string
-  isHost: boolean
-  displayName: string
-  setDisplayName: (name: string) => void
-  joinRoom: (roomId: string, displayName: string) => void
-  leaveRoom: () => void
-  isLoading: boolean
-  error: string | null
-  requestTeam: (teamId: string) => void
-  approveTeam: (teamId: string, userId: string) => void
-  rejectTeam: (teamId: string, userId: string) => void
-  startMatch: () => void
-  updateLineup: (lineupSlots: { position: number; playerId: string | null }[]) => void
-  lockPosition: (position: number) => void
+  socket: Socket | null;
+  room: RoomState | null;
+  myTeam: TeamState | null;
+  mySocketId: string;
+  isHost: boolean;
+  displayName: string;
+  setDisplayName: (name: string) => void;
+  joinRoom: (roomId: string, displayName: string) => void;
+  leaveRoom: () => void;
+  isLoading: boolean;
+  error: string | null;
+  requestTeam: (teamId: string) => void;
+  approveTeam: (teamId: string, userId: string) => void;
+  rejectTeam: (teamId: string, userId: string) => void;
+  startMatch: () => void;
+  updateLineup: (
+    lineupSlots: { position: number; playerId: string | null }[],
+  ) => void;
+  lockPosition: (position: number) => void;
 }
 
-const SocketContext = createContext<SocketContextType | null>(null)
+const SocketContext = createContext<SocketContextType | null>(null);
 
-export function SocketProvider({ children, roomId: initialRoomId }: { children: ReactNode; roomId?: string }) {
-  const [socket, setSocket] = useState<Socket | null>(null)
-  const [room, setRoom] = useState<RoomState | null>(null)
-  const [myTeam, setMyTeam] = useState<TeamState | null>(null)
-  const [mySocketId, setMySocketId] = useState<string>('')
-  const [isHost, setIsHost] = useState(false)
-  const [displayName, setDisplayName] = useState<string>('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null)
+export function SocketProvider({
+  children,
+  roomId: initialRoomId,
+}: {
+  children: ReactNode;
+  roomId?: string;
+}) {
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [room, setRoom] = useState<RoomState | null>(null);
+  const [myTeam, setMyTeam] = useState<TeamState | null>(null);
+  const [mySocketId, setMySocketId] = useState<string>("");
+  const [isHost, setIsHost] = useState(false);
+  const [displayName, setDisplayName] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
 
   const joinRoom = useCallback((roomId: string, displayName: string) => {
-    setDisplayName(displayName)
-    setCurrentRoomId(roomId)
-    setIsLoading(true)
-  }, [])
+    setDisplayName(displayName ?? "");
+    setCurrentRoomId(roomId);
+  }, []);
+
+  // Connect socket when currentRoomId changes
+  useEffect(() => {
+    if (!currentRoomId) {
+      console.log("[Socket] Skipping connection - currentRoomId is null");
+      return;
+    }
+
+    console.log(
+      "[Socket] Attempting to connect to:",
+      SOCKET_URL,
+      "roomId:",
+      currentRoomId,
+    );
+    const newSocket = io(SOCKET_URL, {
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    newSocket.on("connect", () => {
+      console.log("[Socket] Connected:", newSocket.id);
+      console.log(
+        "[Socket] Emitting room:join for roomId:",
+        currentRoomId,
+        "displayName:",
+        displayName,
+      );
+      newSocket.emit("room:join", { roomId: currentRoomId, displayName });
+    });
+
+    newSocket.on("connect_error", (err) => {
+      console.error("[Socket] Connection error:", err.message);
+      setError("Connection failed: " + err.message);
+      setIsLoading(false);
+    });
+
+    newSocket.on("room:state", (state: RoomState) => {
+      console.log(
+        "[Socket] Room state received for room:",
+        state.auctionRoomId,
+      );
+      setRoom(state);
+      setMySocketId(newSocket.id ?? "");
+      setIsLoading(false);
+      setIsHost(state.hostSocketId === newSocket.id);
+      const team = state.teams.find((t) => t.ownerSocketId === newSocket.id);
+      if (team) setMyTeam(team);
+    });
+
+    newSocket.on("user:joined", (user: ParticipantState) => {
+      setRoom((prev) =>
+        prev ? { ...prev, participants: [...prev.participants, user] } : null,
+      );
+    });
+
+    newSocket.on("user:left", (socketId: string) => {
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              participants: prev.participants.filter(
+                (p) => p.socketId !== socketId,
+              ),
+            }
+          : null,
+      );
+    });
+
+    newSocket.on(
+      "team:claimed",
+      (data: { teamId: string; userId: string; displayName: string }) => {
+        setRoom((prev) =>
+          prev
+            ? {
+                ...prev,
+                teams: prev.teams.map((t) =>
+                  t.teamId === data.teamId
+                    ? {
+                        ...t,
+                        claimStatus: "APPROVED",
+                        ownerSocketId: data.userId,
+                        ownerName: data.displayName,
+                      }
+                    : t,
+                ),
+              }
+            : null,
+        );
+      },
+    );
+
+    newSocket.on(
+      "team:requested",
+      (data: { teamId: string; userId: string; displayName: string }) => {
+        setRoom((prev) =>
+          prev
+            ? {
+                ...prev,
+                teams: prev.teams.map((t) =>
+                  t.teamId === data.teamId
+                    ? {
+                        ...t,
+                        claimStatus: "PENDING",
+                        requestedBySocketId: data.userId,
+                        requestedByName: data.displayName,
+                      }
+                    : t,
+                ),
+              }
+            : null,
+        );
+      },
+    );
+
+    newSocket.on(
+      "lineup:synced",
+      (data: {
+        teamId: string;
+        lineupSlots: LineupSlotState[];
+        lockedPositions: number[];
+      }) => {
+        setRoom((prev) =>
+          prev
+            ? {
+                ...prev,
+                teams: prev.teams.map((t) =>
+                  t.teamId === data.teamId
+                    ? {
+                        ...t,
+                        lineup: data.lineupSlots,
+                        lockedPositions: data.lockedPositions,
+                      }
+                    : t,
+                ),
+              }
+            : null,
+        );
+      },
+    );
+
+    newSocket.on("pending:update", (data: { waitingFor: string[] }) => {
+      setRoom((prev) =>
+        prev ? { ...prev, waitingFor: data.waitingFor } : null,
+      );
+    });
+
+    newSocket.on("error", (message: string) => {
+      setError(message);
+      setIsLoading(false);
+    });
+
+    newSocket.on("disconnect", (reason) => {
+      console.log("[Socket] Disconnected:", reason);
+    });
+
+    newSocket.on("connect_error", (err) => {
+      console.error("[Socket] Connection error:", err);
+      setError("Connection failed. Retrying...");
+    });
+
+    setSocket(newSocket);
+
+    return () => {
+      newSocket.close();
+    };
+  }, [currentRoomId]);
 
   const leaveRoom = useCallback(() => {
     if (socket) {
-      socket.close()
-      setSocket(null)
-      setRoom(null)
-      setMyTeam(null)
-      setCurrentRoomId(null)
-      setMySocketId('')
-      setIsHost(false)
-      setDisplayName('')
-      setError(null)
+      socket.close();
+      setSocket(null);
+      setRoom(null);
+      setMyTeam(null);
+      setCurrentRoomId(null);
+      setMySocketId("");
+      setIsHost(false);
+      setDisplayName("");
+      setError(null);
     }
-  }, [socket])
+  }, [socket]);
 
-  const requestTeam = useCallback((teamId: string) => {
-    socket?.emit('team:request', { teamId })
-  }, [socket])
+  const requestTeam = useCallback(
+    (teamId: string) => {
+      socket?.emit("team:request", { teamId });
+    },
+    [socket],
+  );
 
-  const approveTeam = useCallback((teamId: string, userId: string) => {
-    socket?.emit('team:approve', { teamId, socketId: userId })
-  }, [socket])
+  const approveTeam = useCallback(
+    (teamId: string, userId: string) => {
+      socket?.emit("team:approve", { teamId, socketId: userId });
+    },
+    [socket],
+  );
 
-  const rejectTeam = useCallback((teamId: string, userId: string) => {
-    socket?.emit('team:reject', { teamId, socketId: userId })
-  }, [socket])
+  const rejectTeam = useCallback(
+    (teamId: string, userId: string) => {
+      socket?.emit("team:reject", { teamId, socketId: userId });
+    },
+    [socket],
+  );
 
   const startMatch = useCallback(() => {
-    socket?.emit('match:start', {})
-  }, [socket])
+    socket?.emit("match:start", {});
+  }, [socket]);
 
-  const updateLineup = useCallback((lineupSlots: { position: number; playerId: string | null }[]) => {
-    socket?.emit('lineup:update', { lineupSlots })
-  }, [socket])
+  const updateLineup = useCallback(
+    (lineupSlots: { position: number; playerId: string | null }[]) => {
+      socket?.emit("lineup:update", { lineupSlots });
+    },
+    [socket],
+  );
 
-  const lockPosition = useCallback((position: number) => {
-    socket?.emit('lineup:lock', { position })
-  }, [socket])
+  const lockPosition = useCallback(
+    (position: number) => {
+      socket?.emit("lineup:lock", { position });
+    },
+    [socket],
+  );
 
-  const sendChat = useCallback((message: string, gifId?: string) => {
-    socket?.emit('chat:message', { message, gifId })
-  }, [socket])
+  const sendChat = useCallback(
+    (message: string, gifId?: string) => {
+      socket?.emit("chat:message", { message, gifId });
+    },
+    [socket],
+  );
 
-  const setBidTimer = useCallback((seconds: number) => {
-    socket?.emit('setBidTimer', { seconds })
-  }, [socket])
+  const setBidTimer = useCallback(
+    (seconds: number) => {
+      socket?.emit("setBidTimer", { seconds });
+    },
+    [socket],
+  );
 
-  const kickPlayer = useCallback((targetVisitorId: string) => {
-    socket?.emit('kickPlayer', { targetVisitorId })
-  }, [socket])
+  const kickPlayer = useCallback(
+    (targetVisitorId: string) => {
+      socket?.emit("kickPlayer", { targetVisitorId });
+    },
+    [socket],
+  );
 
   const sendRoundReady = useCallback(() => {
-    socket?.emit('round:ready', {})
-  }, [socket])
+    socket?.emit("round:ready", {});
+  }, [socket]);
 
   const value = {
     socket,
@@ -108,8 +323,8 @@ export function SocketProvider({ children, roomId: initialRoomId }: { children: 
     displayName,
     setDisplayName,
     joinRoom: (roomId: string, displayName: string) => {
-      // The useEffect will handle the connection when currentRoomId changes
-      // We just need to set the room ID
+      setDisplayName(displayName ?? "");
+      setCurrentRoomId(roomId);
     },
     leaveRoom,
     isLoading,
@@ -123,19 +338,17 @@ export function SocketProvider({ children, roomId: initialRoomId }: { children: 
     sendChat,
     setBidTimer,
     kickPlayer,
-  }
+  };
 
   return (
-    <SocketContext.Provider value={value}>
-      {children}
-    </SocketContext.Provider>
-  )
+    <SocketContext.Provider value={value}>{children}</SocketContext.Provider>
+  );
 }
 
 export function useSocket() {
-  const context = useContext(SocketContext)
+  const context = useContext(SocketContext);
   if (!context) {
-    throw new Error('useSocket must be used within a SocketProvider')
+    throw new Error("useSocket must be used within a SocketProvider");
   }
-  return context
+  return context;
 }
