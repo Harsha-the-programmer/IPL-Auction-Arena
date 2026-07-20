@@ -3,6 +3,7 @@
 ## Git Workflow
 
 ### Branch Strategy
+
 ```
 main (protected)
   │
@@ -13,6 +14,7 @@ main (protected)
 ```
 
 ### Commit Convention
+
 ```
 type(scope): message
 
@@ -36,12 +38,14 @@ Examples:
 ```
 
 ### Commit Rules
+
 - **Commit after every logical task completion** (not every prompt)
 - **No direct pushes to main** - PR required
 - **Squash merge** to main
 - **Delete branch** after merge
 
 ### Pre-commit (Husky)
+
 ```json
 // package.json
 "lint-staged": {
@@ -49,6 +53,7 @@ Examples:
   "*.{json,md,css}": ["prettier --write"]
 }
 ```
+
 Runs: ESLint + Prettier + TypeScript check
 
 ---
@@ -56,6 +61,7 @@ Runs: ESLint + Prettier + TypeScript check
 ## Code Standards
 
 ### TypeScript
+
 - **Strict mode**: `"strict": true` in tsconfig
 - **No `any`** - use `unknown` or proper types
 - **Explicit return types** for public functions
@@ -63,6 +69,7 @@ Runs: ESLint + Prettier + TypeScript check
 - **Shared types** in `src/lib/types` (or `packages/shared-types`)
 
 ### React/Next.js
+
 - **Server Components by default** - only `'use client'` when needed
 - **Client Components**: Interactive UI, Socket.io, drag-drop, animations
 - **Server Actions** for mutations (create room, lock lineup)
@@ -70,18 +77,21 @@ Runs: ESLint + Prettier + TypeScript check
 - **Suspense boundaries** for async components
 
 ### Styling (Tailwind)
+
 - **Utility-first** - no custom CSS files
 - **Design tokens** in `tailwind.config.ts` (colors, fonts, spacing)
 - **Component variants** with `class-variance-authority` (cva)
 - **Dark mode only** - base is dark, no `dark:` prefix needed
 
 ### Database (Prisma)
+
 - **All queries via Prisma Client** - no raw SQL
 - **Transactions** for multi-model operations
 - **Select/Include** precisely - avoid over-fetching
 - **Middleware** for soft deletes, timestamps (if needed)
 
 ### Socket.io
+
 - **Typed events** via shared Zod schemas
 - **Acknowledge callbacks** for critical operations
 - **Room naming**: `room:{roomId}`, `user:{socketId}`
@@ -89,17 +99,31 @@ Runs: ESLint + Prettier + TypeScript check
 
 ---
 
-## API Design
+## Development Rules & Guidelines
+
+### Server Management
+
+- **Never start/stop/restart the server** - ask the user to start/stop/restart from a different terminal
+- Only other operations (code changes, builds, tests) are performed here
+- User will handle server lifecycle from a separate terminal
+
+### Git & Documentation
+
+- **Push to GitHub after every fix/milestone** - commit and push after every meaningful change
+- **Update markdown docs after every meaningful task** - Tracker.md, implementation-plan.md, and other docs must reflect current state
+- This is critical for maintaining project context and history
 
 ### REST Endpoints
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/api/import-room` | Userscript data import |
-| GET | `/api/room/:roomId` | Initial room state (SSR) |
-| POST | `/api/room/:roomId/lineup` | Save lineup (Server Action preferred) |
-| POST | `/api/rank-players` | Grok AI ranking |
+
+| Method | Path                       | Purpose                               |
+| ------ | -------------------------- | ------------------------------------- |
+| POST   | `/api/import-room`         | Userscript data import                |
+| GET    | `/api/room/:roomId`        | Initial room state (SSR)              |
+| POST   | `/api/room/:roomId/lineup` | Save lineup (Server Action preferred) |
+| POST   | `/api/rank-players`        | Grok AI ranking                       |
 
 ### Response Format
+
 ```typescript
 // Success
 { success: true, data: T }
@@ -134,7 +158,7 @@ Runs: ESLint + Prettier + TypeScript check
 ## Security
 
 - **No authentication** - room code is the secret
-- **Rate limiting**: 
+- **Rate limiting**:
   - `/api/import-room`: 10/min/IP
   - `/api/rank-players`: 30/min/room
 - **CORS**: Only `arena.app` origin for Socket.io
@@ -155,6 +179,7 @@ Runs: ESLint + Prettier + TypeScript check
 ## Documentation (Living Documents)
 
 All 8 markdown files in project root are **living documents**:
+
 - `Product-requirement-document.md` - Update when scope changes
 - `Tech-specifications.md` - Update when tech decisions change
 - `Appflow.md` - Update when user flows change
