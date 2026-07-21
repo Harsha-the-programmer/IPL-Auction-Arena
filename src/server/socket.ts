@@ -355,14 +355,22 @@ io.on(
           setRoomCache(roomId, room);
         }
 
-        // Check if user already in room (reconnection)
+        // Use the actual room UUID for database operations
+        const actualRoomId = room.id;
+
+        // Check if user already in room by socketId (exact reconnection)
         let participant = room.participants.find(
           (p) => p.socketId === socket.id,
         );
-        const isNewParticipant = !participant;
 
-        // Use the actual room UUID for database operations
-        const actualRoomId = room.id;
+        // If not found by socketId, check by displayName (reconnection from new tab/browser)
+        if (!participant) {
+          participant = room.participants.find(
+            (p) => p.displayName === displayName && p.isOnline,
+          );
+        }
+
+        const isNewParticipant = !participant;
 
         if (isNewParticipant) {
           // Check if first participant -> host
@@ -396,12 +404,21 @@ io.on(
           room.participants.push(mapParticipantToState(participant));
           setRoomCache(roomId, room);
         } else {
-          // Reconnection - update online status
-          if (!participant) return;
+          // Reconnection or returning user - update socketId and online status
+          if (!participant) {
+            socket.emit("error", "Participant not found");
+            return;
+          }
+          const existingParticipantId = participant.id;
           await prisma.participant.update({
             where: { id: participant.id },
-            data: { isOnline: true, lastSeenAt: new Date() },
+            data: {
+              socketId: socket.id,
+              isOnline: true,
+              lastSeenAt: new Date(),
+            },
           });
+          participant.socketId = socket.id;
           participant.isOnline = true;
           setRoomCache(roomId, room);
         }
@@ -409,9 +426,9 @@ io.on(
         // Join socket room
         socket.join(`room:${roomId}`);
         socket.data.roomId = roomId;
-        socket.data.userId = participant.id;
+        socket.data.userId = participant!.id;
         socket.data.displayName = displayName;
-        socket.data.isHost = participant.isHost;
+        socket.data.isHost = participant!.isHost;
 
         // Send full room state
         socket.emit("room:state", room);
@@ -420,11 +437,11 @@ io.on(
         if (isNewParticipant) {
           socket
             .to(`room:${roomId}`)
-            .emit("user:joined", mapParticipantToState(participant));
+            .emit("user:joined", mapParticipantToState(participant!));
         }
 
         console.log(
-          `[Socket] ${displayName} joined room ${roomId} (host: ${participant.isHost})`,
+          `[Socket] ${displayName} joined room ${roomId} (host: ${participant!.isHost})`,
         );
       } catch (error) {
         console.error("[Socket] Join error:", error);
