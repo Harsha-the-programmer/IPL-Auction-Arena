@@ -175,7 +175,7 @@ export default function InstallPage() {
                         Install
                       </span>
                     </li>
-                    <li>You'll see "IPL Auction Arena Exporter installed!"</li>
+                    <li>You&apos;ll see &ldquo;IPL Auction Arena Exporter installed!&rdquo;</li>
                   </ol>
                 </div>
 
@@ -230,7 +230,7 @@ export default function InstallPage() {
                     <li>
                       When auction ends, click{" "}
                       <span className="font-medium text-white">
-                        "Export to Arena"
+                        &ldquo;Export to Arena&rdquo;
                       </span>{" "}
                       button in header
                     </li>
@@ -294,7 +294,7 @@ export default function InstallPage() {
           </h3>
           <div className="grid md:grid-cols-2 gap-4 text-sm text-neutral-400">
             <div className="p-4 bg-neutral-800/50 rounded-lg font-mono text-white">
-              <span className="text-green-400">// ==UserScript==</span>
+              <span className="text-green-400">{'// ==UserScript=='}</span>
               <br />
               <span className="text-amber-400">@name</span> IPL Auction Arena
               Exporter
@@ -306,7 +306,7 @@ export default function InstallPage() {
               <br />
               <span className="text-amber-400">@connect</span> arena.app
               <br />
-              <span className="text-green-400">// ==/UserScript==</span>
+              <span className="text-green-400">{'// ==/UserScript=='}</span>
             </div>
             <div className="p-4 bg-neutral-800/50 rounded-lg">
               <p className="mb-2">The userscript:</p>

@@ -76,7 +76,7 @@ export default function LandingPage() {
             </form>
 
             <p className="text-sm text-neutral-500">
-              Don't have a room code?{" "}
+              Don&apos;t have a room code?{" "}
               <Link
                 href="/install"
                 className="text-amber-400 hover:underline font-medium"
@@ -167,7 +167,7 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold mb-4">Ready to Battle?</h2>
           <p className="text-neutral-400 mb-8">
             Host installs userscript → Plays auction on playauctiongame.com →
-            Clicks "Export to Arena" → Shares room code with friends
+            Clicks &ldquo;Export to Arena&rdquo; → Shares room code with friends
           </p>
           <Link
             href="/install"

@@ -71,6 +71,7 @@ export interface ParticipantState {
   isOnline: boolean
   joinedAt: string
   lastSeenAt: string
+  clientId: string | null
 }
 
 export interface ScoreState {
@@ -84,7 +85,7 @@ export interface ScoreState {
 
 // Client -> Server Events
 export interface ClientToServerEvents {
-  'room:join': (data: { roomId: string; displayName: string }) => void
+  'room:join': (data: { roomId: string; displayName: string; clientId?: string }) => void
   'team:request': (data: { teamId: string }) => void
   'team:approve': (data: { teamId: string; socketId: string }) => void
   'team:reject': (data: { teamId: string; socketId: string }) => void

@@ -264,6 +264,7 @@ function mapParticipantToState(p: any): ParticipantState {
       typeof p.lastSeenAt === "string"
         ? p.lastSeenAt
         : p.lastSeenAt?.toISOString() || new Date().toISOString(),
+    clientId: p.clientId ?? null,
   };
 }
 
@@ -342,7 +343,7 @@ io.on(
   ) => {
     console.log(`[Socket] Connected: ${socket.id}`);
 
-    socket.on("room:join", async ({ roomId, displayName }) => {
+    socket.on("room:join", async ({ roomId, displayName, clientId }) => {
       try {
         // Load room from DB if not cached
         let room: RoomState | null = getRoomCache(roomId);
@@ -370,6 +371,13 @@ io.on(
           );
         }
 
+        // Also check by clientId if provided (for reconnection from different tab/browser)
+        if (!participant && clientId) {
+          participant = room.participants.find(
+            (p) => p.clientId === clientId && p.isOnline,
+          );
+        }
+
         const isNewParticipant = !participant;
 
         if (isNewParticipant) {
@@ -384,12 +392,13 @@ io.on(
               displayName,
               isHost,
               isOnline: true,
+              clientId: clientId || null,
             },
           });
           participant = {
             ...newParticipant,
-            joinedAt: newParticipant.joinedAt.toISOString(),
-            lastSeenAt: newParticipant.lastSeenAt.toISOString(),
+            joinedAt: typeof newParticipant.joinedAt === "string" ? newParticipant.joinedAt : newParticipant.joinedAt.toISOString(),
+            lastSeenAt: typeof newParticipant.lastSeenAt === "string" ? newParticipant.lastSeenAt : newParticipant.lastSeenAt.toISOString(),
           };
 
           // If first participant, set as host

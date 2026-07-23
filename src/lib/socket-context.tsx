@@ -30,7 +30,7 @@ interface SocketContextType {
   isHost: boolean;
   displayName: string;
   setDisplayName: (name: string) => void;
-  joinRoom: (roomId: string, displayName: string) => void;
+  joinRoom: (roomId: string, displayName: string, clientId?: string) => void;
   leaveRoom: () => void;
   isLoading: boolean;
   error: string | null;
@@ -38,9 +38,7 @@ interface SocketContextType {
   approveTeam: (teamId: string, userId: string) => void;
   rejectTeam: (teamId: string, userId: string) => void;
   startMatch: () => void;
-  updateLineup: (
-    lineupSlots: { position: number; playerId: string | null }[],
-  ) => void;
+  updateLineup: (lineupSlots: { position: number; playerId: string | null }[]) => void;
   lockPosition: (position: number) => void;
 }
 
@@ -63,10 +61,12 @@ export function SocketProvider({
   const [error, setError] = useState<string | null>(null);
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
 
-  const joinRoom = useCallback((roomId: string, displayName: string) => {
+  const joinRoom = useCallback((roomId: string, displayName: string, clientId?: string) => {
     setDisplayName(displayName ?? "");
     setCurrentRoomId(roomId);
-  }, []);
+    // Emit room:join with clientId for reconnection support
+    socket?.emit("room:join", { roomId, displayName, clientId });
+  }, [socket]);
 
   // Connect socket when currentRoomId changes
   useEffect(() => {
@@ -96,7 +96,9 @@ export function SocketProvider({
         "displayName:",
         displayName,
       );
-      newSocket.emit("room:join", { roomId: currentRoomId, displayName });
+      // Get clientId from localStorage for reconnection support
+      const clientId = typeof window !== "undefined" ? localStorage.getItem("ipl-auction-client-id") : null;
+      newSocket.emit("room:join", { roomId: currentRoomId, displayName, clientId });
     });
 
     newSocket.on("connect_error", (err) => {

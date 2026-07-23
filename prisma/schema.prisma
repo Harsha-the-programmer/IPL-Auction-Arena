@@ -136,6 +136,7 @@ model Participant {
   isOnline      Boolean  @default(true)
   joinedAt      DateTime @default(now()) @map("joined_at")
   lastSeenAt    DateTime @default(now()) @map("last_seen_at")
+  clientId      String?  @map("client_id") // For persistent browser identification
 
   room          Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   team          Team?    @relation(fields: [roomId, teamId], references: [roomId, id], onDelete: SetNull)
