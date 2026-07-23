@@ -1,16 +1,25 @@
-nohup: ignoring input
 
 > ipl-auction-arena@0.1.0 dev
 > tsx server.ts
 
-Error: listen EADDRINUSE: address already in use :::3000
-    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
-    at listenInCluster (node:net:2065:12)
-    at Server.listen (node:net:2170:7)
-    at <anonymous> (/run/media/harsha/Shared/IPL-Auction-Arena/server.ts:32:6) {
-  code: 'EADDRINUSE',
-  errno: -98,
-  syscall: 'listen',
-  address: '::',
-  port: 3000
-}
+Error: listen EADDRINUSE: address(node:282689) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ Compiled /api/room/[roomId] in 253ms (55 modules)
+ GET /api/room/DEMO01 200 in 3257ms
+ ○ Compiling /room/[roomId] ...
+ ✓ Compiled /room/[roomId] in 3s (672 modules)
+ ✓ Compiled in 99ms (316 modules)
+ GET /room/DEMO01 200 in 3440ms
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+ ✓ Compiled / in 166ms (562 modules)
+ GET / 200 in 303ms
+ ✓ Compiled /_not-found in 90ms (565 modules)
+ GET /_next/static/css/css-src_app_globals_css-node_modules_next_font_google_target_css-node_modules_next_font_googl-accfe3.css?v=1784825473075 404 in 172ms
+ GET /_next/static/chunks/main-app.js?v=1784825473075 404 in 170ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 169ms
+ GET /apple-touch-icon.png 404 in 14ms
+ GET / 200 in 25ms
+ GET /_next/static/css/css-src_app_globals_css-node_modules_next_font_google_target_css-node_modules_next_font_googl-accfe3.css?v=1784825475145 404 in 21ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 21ms
+ GET /_next/static/chunks/main-app.js?v=1784825475145 404 in 21ms
+ GET /apple-touch-icon.png 404 in 12ms
