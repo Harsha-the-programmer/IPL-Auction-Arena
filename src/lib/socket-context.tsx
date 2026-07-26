@@ -84,8 +84,12 @@ export function SocketProvider({
 
     newSocket.on("connect", () => {
       console.log("[Socket] Connected:", newSocket.id);
-      // Don't auto-join here - let the page component call joinRoom with proper displayName
-      // This prevents auto-joining with empty displayName on reconnect
+      // Auto-join with current displayName and clientId
+      if (displayName) {
+        const clientId = typeof window !== "undefined" ? localStorage.getItem("ipl-auction-client-id") : null;
+        console.log("[Socket] Auto-joining room:", currentRoomId, "displayName:", displayName);
+        newSocket.emit("room:join", { roomId: currentRoomId, displayName, clientId });
+      }
     });
 
     newSocket.on("connect_error", (err) => {
@@ -339,8 +343,7 @@ export function SocketProvider({
     joinRoom: (roomId: string, displayName: string, clientId?: string) => {
       setDisplayName(displayName ?? "");
       setCurrentRoomId(roomId);
-      // Emit room:join with clientId for reconnection support
-      socket?.emit("room:join", { roomId, displayName, clientId });
+      // room:join is emitted in socket.on("connect") handler
     },
     leaveRoom,
     isLoading,
