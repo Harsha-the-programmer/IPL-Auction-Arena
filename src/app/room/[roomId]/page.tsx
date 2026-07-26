@@ -7,9 +7,6 @@ import {
   Users,
   Crown,
   Loader2,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
   Copy,
   Share2,
   Lock,
@@ -74,6 +71,46 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     }
     return "";
   });
+
+  // Check if we should auto-reconnect (user has clientId and room already has this participant)
+  const [shouldAutoReconnect, setShouldAutoReconnect] = useState(false);
+
+  useEffect(() => {
+    if (room && clientId && !hasSubmittedName) {
+      const existingParticipant = room.participants.find(
+        (p) => p.clientId === clientId && p.isOnline
+      );
+      if (existingParticipant) {
+        setShouldAutoReconnect(true);
+      }
+    }
+  }, [room, clientId, hasSubmittedName]);
+
+  // Auto-reconnect if we found existing participant
+  useEffect(() => {
+    if (shouldAutoReconnect && !hasSubmittedName) {
+      const existingParticipant = room?.participants.find(
+        (p) => p.clientId === clientId && p.isOnline
+      );
+      if (existingParticipant) {
+        joinRoom(roomId, existingParticipant.displayName, clientId);
+        setHasSubmittedName(true);
+      }
+    }
+  }, [shouldAutoReconnect, room, clientId, roomId, joinRoom]);
+
+  // Also check on initial load if we're already in the room (from server-side reconnect)
+  useEffect(() => {
+    if (room && !hasSubmittedName && clientId) {
+      const existingParticipant = room.participants.find(
+        (p) => p.clientId === clientId && p.isOnline
+      );
+      if (existingParticipant) {
+        // Server already reconnected us - we're in the room with our name
+        setHasSubmittedName(true);
+      }
+    }
+  }, [room, hasSubmittedName, clientId]);
 
   // Handle name submission
   const handleNameSubmit = () => {
@@ -231,31 +268,6 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
-        {/* Pending Requests (Host Only) */}
-        {isHost && pendingTeams.length > 0 && (
-          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-            <h3 className="font-semibold text-amber-400 mb-3 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5" /> Pending Team Requests
-            </h3>
-            <div className="flex flex-wrap gap-3">
-              {pendingTeams.map((team) => (
-                <div key={team.teamId} className="flex items-center gap-3 px-4 py-2 bg-neutral-800/50 rounded-lg">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: team.color }}>
-                    {team.shortName}
-                  </div>
-                  <span className="font-medium">{team.requestedByName} wants {team.name}</span>
-                  <button onClick={() => socket?.emit("team:approve", { teamId: team.teamId, socketId: team.requestedBySocketId! })} className="btn-primary text-xs px-3 py-1">
-                    <CheckCircle className="w-3 h-3" /> Approve
-                  </button>
-                  <button onClick={() => socket?.emit("team:reject", { teamId: team.teamId, socketId: team.requestedBySocketId! })} className="btn-danger text-xs px-3 py-1">
-                    <XCircle className="w-3 h-3" /> Reject
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Team Grid */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">

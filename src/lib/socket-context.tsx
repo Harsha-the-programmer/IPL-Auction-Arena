@@ -62,13 +62,6 @@ export function SocketProvider({
   const [error, setError] = useState<string | null>(null);
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
 
-  const joinRoom = useCallback((roomId: string, displayName: string, clientId?: string) => {
-    setDisplayName(displayName ?? "");
-    setCurrentRoomId(roomId);
-    // Emit room:join with clientId for reconnection support
-    socket?.emit("room:join", { roomId, displayName, clientId });
-  }, [socket]);
-
   // Connect socket when currentRoomId changes
   useEffect(() => {
     if (!currentRoomId) {
@@ -91,15 +84,8 @@ export function SocketProvider({
 
     newSocket.on("connect", () => {
       console.log("[Socket] Connected:", newSocket.id);
-      console.log(
-        "[Socket] Emitting room:join for roomId:",
-        currentRoomId,
-        "displayName:",
-        displayName,
-      );
-      // Get clientId from localStorage for reconnection support
-      const clientId = typeof window !== "undefined" ? localStorage.getItem("ipl-auction-client-id") : null;
-      newSocket.emit("room:join", { roomId: currentRoomId, displayName, clientId });
+      // Don't auto-join here - let the page component call joinRoom with proper displayName
+      // This prevents auto-joining with empty displayName on reconnect
     });
 
     newSocket.on("connect_error", (err) => {
@@ -350,9 +336,11 @@ export function SocketProvider({
     isHost,
     displayName,
     setDisplayName,
-    joinRoom: (roomId: string, displayName: string) => {
+    joinRoom: (roomId: string, displayName: string, clientId?: string) => {
       setDisplayName(displayName ?? "");
       setCurrentRoomId(roomId);
+      // Emit room:join with clientId for reconnection support
+      socket?.emit("room:join", { roomId, displayName, clientId });
     },
     leaveRoom,
     isLoading,
