@@ -204,7 +204,7 @@ function mapRoomToState(room: any): RoomState {
 
 function mapTeamToState(team: any): TeamState {
   return {
-    id: team.teamId,
+    id: team.id,
     teamId: team.teamId,
     name: team.name,
     shortName: team.shortName,
@@ -360,10 +360,11 @@ io.on(
         const actualRoomId = room.id;
 
         // Check if user already in room by clientId FIRST (most reliable for reconnection)
+        // Don't check isOnline here - we want to reconnect even if they were marked offline
         let participant = null;
         if (clientId) {
           participant = room.participants.find(
-            (p) => p.clientId === clientId && p.isOnline,
+            (p) => p.clientId === clientId,
           );
         }
 
@@ -1044,10 +1045,9 @@ io.on(
         // Cannot kick host
         if (participant.isHost) return;
 
-        // Update participant offline in DB
-        await prisma.participant.update({
+        // Delete participant from DB (so they can't reconnect with same clientId)
+        await prisma.participant.delete({
           where: { id: participant.id },
-          data: { isOnline: false, lastSeenAt: new Date() },
         });
 
         // Notify the kicked user
@@ -1057,8 +1057,8 @@ io.on(
         // Force disconnect the kicked socket
         io.to(targetSocketId).disconnectSockets(true);
 
-        // Update room cache
-        participant.isOnline = false;
+        // Remove from room cache
+        room.participants = room.participants.filter((p) => p.id !== participant.id);
         setRoomCache(roomId, room);
 
         // Notify room
