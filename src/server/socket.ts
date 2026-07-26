@@ -1136,6 +1136,12 @@ io.on(
                 data: { isHost: true },
               });
 
+              // Update socket.data.isHost for the new host's socket
+              const newHostSocket = io.sockets.sockets.get(newHost.socketId);
+              if (newHostSocket) {
+                newHostSocket.data.isHost = true;
+              }
+
               io.to(`room:${roomId}`).emit("host:changed", newHost.socketId);
             }
           }
