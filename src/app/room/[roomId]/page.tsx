@@ -103,7 +103,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       // The name form will be shown instead of this logic now
       return;
     }
-    setPendingTeamId(teamId);
+    socket?.emit("team:request", { teamId });
   };
 
   // Show name entry form if user hasn't submitted name yet
@@ -418,7 +418,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               <h4 className="font-semibold mb-3">How it works:</h4>
               <ol className="list-decimal list-inside space-y-2 text-neutral-400 text-sm">
                 <li>Play IPL Auction on <a href="https://playauctiongame.com" target="_blank" rel="noopener" className="text-amber-400 hover:underline">playauctiongame.com</a></li>
-                <li>When auction ends, click <span className="font-medium text-white">"Export to Arena"</span> button in header</li>
+                <li>When auction ends, click <span className="font-medium text-white">&ldquo;Export to Arena&rdquo;</span> button in header</li>
                 <li>Share the room link ({window.location.href}) with friends</li>
                 <li>Friends just click the link - <span className="font-medium text-green-400">no install needed!</span></li>
                 <li>Pick teams, build XI, battle with AI rankings!</li>

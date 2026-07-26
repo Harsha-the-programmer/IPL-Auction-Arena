@@ -359,22 +359,25 @@ io.on(
         // Use the actual room UUID for database operations
         const actualRoomId = room.id;
 
+        // Check if user already in room by clientId FIRST (most reliable for reconnection)
+        let participant = null;
+        if (clientId) {
+          participant = room.participants.find(
+            (p) => p.clientId === clientId && p.isOnline,
+          );
+        }
+
         // Check if user already in room by socketId (exact reconnection)
-        let participant = room.participants.find(
-          (p) => p.socketId === socket.id,
-        );
+        if (!participant) {
+          participant = room.participants.find(
+            (p) => p.socketId === socket.id,
+          );
+        }
 
         // If not found by socketId, check by displayName (reconnection from new tab/browser)
         if (!participant) {
           participant = room.participants.find(
             (p) => p.displayName === displayName && p.isOnline,
-          );
-        }
-
-        // Also check by clientId if provided (for reconnection from different tab/browser)
-        if (!participant && clientId) {
-          participant = room.participants.find(
-            (p) => p.clientId === clientId && p.isOnline,
           );
         }
 
@@ -418,18 +421,25 @@ io.on(
             socket.emit("error", "Participant not found");
             return;
           }
-          const existingParticipantId = participant.id;
+          // Update clientId if provided and not already set
+          const existingParticipant = participant;
+          const existingParticipantId = existingParticipant.id;
           await prisma.participant.update({
-            where: { id: participant.id },
+            where: { id: existingParticipant.id },
             data: {
               socketId: socket.id,
               isOnline: true,
               lastSeenAt: new Date(),
+              ...(clientId && !existingParticipant.clientId ? { clientId } : {}),
             },
           });
-          participant.socketId = socket.id;
-          participant.isOnline = true;
+          existingParticipant.socketId = socket.id;
+          existingParticipant.isOnline = true;
+          if (clientId && !existingParticipant.clientId) {
+            existingParticipant.clientId = clientId;
+          }
           setRoomCache(roomId, room);
+          participant = existingParticipant;
         }
 
         // Join socket room
@@ -471,9 +481,9 @@ io.on(
         const team = room.teams.find((t) => t.teamId === teamId);
         if (!team || team.claimStatus !== "UNCLAIMED") return;
 
-        // Update team to PENDING
+        // Update team to PENDING - use team.id (UUID) not team.teamId (short name)
         await prisma.team.update({
-          where: { id: team.teamId },
+          where: { id: team.id },
           data: {
             claimStatus: "PENDING",
             requestedBySocketId: socket.id,
@@ -513,9 +523,9 @@ io.on(
         if (!team || team.claimStatus !== "PENDING") return;
         if (team.requestedBySocketId !== targetSocketId) return;
 
-        // Update in DB
+        // Update in DB - use team.id (UUID) not team.teamId
         await prisma.team.update({
-          where: { id: team.teamId },
+          where: { id: team.id },
           data: {
             claimStatus: "APPROVED",
             ownerSocketId: targetSocketId,
@@ -528,7 +538,7 @@ io.on(
         // Update participant's team
         await prisma.participant.update({
           where: { socketId: targetSocketId },
-          data: { teamId: team.teamId },
+          data: { teamId: team.id },
         });
 
         team.claimStatus = "APPROVED";
@@ -542,7 +552,7 @@ io.on(
           const lineup = await prisma.lineup.create({
             data: {
               roomId,
-              teamId: team.teamId,
+              teamId: team.id,
               slots: {
                 create: Array.from({ length: 11 }, (_, i) => ({
                   position: positionToEnum(i + 1),
@@ -587,7 +597,7 @@ io.on(
         if (team.requestedBySocketId !== targetSocketId) return;
 
         await prisma.team.update({
-          where: { id: team.teamId },
+          where: { id: team.id },
           data: {
             claimStatus: "UNCLAIMED",
             requestedBySocketId: null,
