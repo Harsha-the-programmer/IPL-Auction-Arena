@@ -439,6 +439,14 @@ io.on(
           if (clientId && !existingParticipant.clientId) {
             existingParticipant.clientId = clientId;
           }
+          // If this participant is the host, update room's hostSocketId
+          if (existingParticipant.isHost) {
+            await prisma.room.update({
+              where: { id: actualRoomId },
+              data: { hostSocketId: socket.id },
+            });
+            room.hostSocketId = socket.id;
+          }
           setRoomCache(roomId, room);
           participant = existingParticipant;
         }
