@@ -140,6 +140,24 @@ export function SocketProvider({
       );
     });
 
+    newSocket.on("host:changed", (newHostSocketId: string) => {
+      console.log("[Socket] Host changed to:", newHostSocketId);
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              hostSocketId: newHostSocketId,
+              participants: prev.participants.map((p) => ({
+                ...p,
+                isHost: p.socketId === newHostSocketId,
+              })),
+            }
+          : null,
+      );
+      // Update local isHost state
+      setIsHost(newHostSocketId === newSocket.id);
+    });
+
     newSocket.on(
       "team:claimed",
       (data: { teamId: string; userId: string; displayName: string }) => {
