@@ -221,6 +221,13 @@ export function SocketProvider({
     newSocket.on("error", (message: string) => {
       setError(message);
       setIsLoading(false);
+      // If kicked, clear clientId and redirect to home
+      if (message.includes("kicked")) {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("ipl-auction-client-id");
+          window.location.href = "/";
+        }
+      }
     });
 
     newSocket.on("disconnect", (reason) => {
