@@ -213,6 +213,7 @@ function mapTeamToState(team: any): TeamState {
     ownerSocketId: team.ownerSocketId,
     ownerName: team.ownerName,
     requestedBySocketId: team.requestedBySocketId,
+    requestedByUserId: team.requestedByUserId,
     requestedByName: team.requestedByName,
     purse: team.purse,
     players: team.players.map(mapPlayerToState),
@@ -496,12 +497,14 @@ io.on(
           data: {
             claimStatus: "PENDING",
             requestedBySocketId: socket.id,
+            requestedByUserId: userId,
             requestedByName: displayName,
           },
         });
 
         team.claimStatus = "PENDING";
         team.requestedBySocketId = socket.id;
+        team.requestedByUserId = userId;
         team.requestedByName = displayName || null;
         setRoomCache(roomId, room);
 
@@ -532,6 +535,8 @@ io.on(
         if (!team || team.claimStatus !== "PENDING") return;
         if (team.requestedBySocketId !== targetSocketId) return;
 
+        const participantId = team.requestedByUserId;
+
         // Update in DB - use team.id (UUID) not team.teamId
         await prisma.team.update({
           where: { id: team.id },
@@ -540,20 +545,24 @@ io.on(
             ownerSocketId: targetSocketId,
             ownerName: team.requestedByName,
             requestedBySocketId: null,
+            requestedByUserId: null,
             requestedByName: null,
           },
         });
 
-        // Update participant's team
-        await prisma.participant.update({
-          where: { socketId: targetSocketId },
-          data: { teamId: team.id },
-        });
+        // Update participant's team using participant ID
+        if (participantId) {
+          await prisma.participant.update({
+            where: { id: participantId },
+            data: { teamId: team.id },
+          });
+        }
 
         team.claimStatus = "APPROVED";
         team.ownerSocketId = targetSocketId;
         team.ownerName = team.requestedByName;
         team.requestedBySocketId = null;
+        team.requestedByUserId = null;
         team.requestedByName = null;
 
         // Create empty lineup for team
@@ -605,17 +614,21 @@ io.on(
         if (!team || team.claimStatus !== "PENDING") return;
         if (team.requestedBySocketId !== targetSocketId) return;
 
+        const participantId = team.requestedByUserId;
+
         await prisma.team.update({
           where: { id: team.id },
           data: {
             claimStatus: "UNCLAIMED",
             requestedBySocketId: null,
+            requestedByUserId: null,
             requestedByName: null,
           },
         });
 
         team.claimStatus = "UNCLAIMED";
         team.requestedBySocketId = null;
+        team.requestedByUserId = null;
         team.requestedByName = null;
         setRoomCache(roomId, room);
 

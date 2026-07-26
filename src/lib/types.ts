@@ -36,6 +36,7 @@ export interface TeamState {
   ownerSocketId: string | null
   ownerName: string | null
   requestedBySocketId: string | null
+  requestedByUserId: string | null
   requestedByName: string | null
   purse: number
   players: PlayerState[]

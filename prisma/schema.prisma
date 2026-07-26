@@ -89,6 +89,7 @@ model Team {
   ownerSocketId       String?            @map("owner_socket_id") // Socket ID of approved user
   ownerName           String?            @map("owner_name")    // Display name
   requestedBySocketId String?            @map("requested_by_socket_id") // Pending request
+  requestedByUserId   String?            @map("requested_by_user_id") // Participant DB ID
   requestedByName     String?            @map("requested_by_name")
   purse               Int                // Remaining purse from auction (lakhs)
 
