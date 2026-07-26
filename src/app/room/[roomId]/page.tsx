@@ -51,6 +51,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     joinRoom,
     isLoading,
     leaveRoom,
+    approveTeam,
+    rejectTeam,
+    startMatch,
+    kickPlayer,
   } = useSocket();
 
   const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
@@ -310,13 +314,30 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                       </div>
                     )}
 
-                    {isPending && (
+                    {isPending && isHost && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => approveTeam(team.teamId, team.requestedBySocketId!)}
+                          disabled={!team.requestedBySocketId}
+                          className="btn-secondary text-xs flex-1"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => rejectTeam(team.teamId, team.requestedBySocketId!)}
+                          disabled={!team.requestedBySocketId}
+                          className="btn-ghost text-xs flex-1 text-red-400 hover:bg-red-500/10"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                    {isPending && !isHost && (
                       <div className="px-3 py-1.5 bg-amber-500/20 text-amber-400 text-xs font-medium rounded-lg text-center flex items-center gap-1">
                         <Loader2 className="w-3 h-3 animate-spin" />
                         Pending Approval
                       </div>
                     )}
-
                     {canRequest && (
                       <button
                         onClick={() => requestTeam(team.teamId)}
@@ -358,6 +379,14 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                   )}
                 </div>
                 <div className={cn("w-2 h-2 rounded-full", p.isOnline ? "bg-green-500" : "bg-neutral-600")} />
+                {isHost && p.socketId !== mySocketId && !p.isHost && p.isOnline && (
+                  <button
+                    onClick={() => kickPlayer(p.socketId)}
+                    className="btn-ghost text-xs text-red-400 hover:bg-red-500/10 px-2 py-1"
+                  >
+                    Kick
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -367,7 +396,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
         {isHost && approvedTeams.length > 0 && (
           <div className="border-t border-neutral-800 pt-6">
             <button
-              onClick={() => socket?.emit("match:start")}
+              onClick={startMatch}
               disabled={!allLocked}
               className={cn("btn-primary w-full text-lg py-4", !allLocked && "opacity-50 cursor-not-allowed")}
             >

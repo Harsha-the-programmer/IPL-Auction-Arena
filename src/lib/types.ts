@@ -96,6 +96,7 @@ export interface ClientToServerEvents {
   'match:pause': () => void
   'match:resume': () => void
   'match:end': () => void
+  'kickPlayer': (data: { targetSocketId: string }) => void
 }
 
 export interface LineupSlotInput {

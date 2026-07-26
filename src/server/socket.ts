@@ -1027,6 +1027,49 @@ io.on(
       });
     }
 
+    // Handle kick player (host only)
+    socket.on("kickPlayer", async ({ targetSocketId }) => {
+      const roomId = socket.data.roomId;
+      const isHost = socket.data.isHost;
+      if (!roomId || !isHost) return;
+
+      try {
+        const room = getRoomCache(roomId);
+        if (!room) return;
+
+        // Find participant by socketId
+        const participant = room.participants.find((p) => p.socketId === targetSocketId);
+        if (!participant) return;
+
+        // Cannot kick host
+        if (participant.isHost) return;
+
+        // Update participant offline in DB
+        await prisma.participant.update({
+          where: { id: participant.id },
+          data: { isOnline: false, lastSeenAt: new Date() },
+        });
+
+        // Notify the kicked user
+        io.to(targetSocketId).emit("error", "You have been kicked from the room by the host");
+        io.to(targetSocketId).emit("user:left", targetSocketId);
+
+        // Force disconnect the kicked socket
+        io.to(targetSocketId).disconnectSockets(true);
+
+        // Update room cache
+        participant.isOnline = false;
+        setRoomCache(roomId, room);
+
+        // Notify room
+        io.to(`room:${roomId}`).emit("user:left", targetSocketId);
+
+        await updatePendingTeams(roomId);
+      } catch (error) {
+        console.error("[Socket] Kick player error:", error);
+      }
+    });
+
     // Handle disconnection
     socket.on("disconnect", async () => {
       console.log(`[Socket] Disconnected: ${socket.id}`);

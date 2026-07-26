@@ -40,6 +40,7 @@ interface SocketContextType {
   startMatch: () => void;
   updateLineup: (lineupSlots: { position: number; playerId: string | null }[]) => void;
   lockPosition: (position: number) => void;
+  kickPlayer: (targetSocketId: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType | null>(null);
@@ -306,8 +307,8 @@ export function SocketProvider({
   );
 
   const kickPlayer = useCallback(
-    (targetVisitorId: string) => {
-      socket?.emit("kickPlayer", { targetVisitorId });
+    (targetSocketId: string) => {
+      socket?.emit("kickPlayer", { targetSocketId });
     },
     [socket],
   );
