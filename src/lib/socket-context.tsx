@@ -390,11 +390,8 @@ export function SocketProvider({
     joinRoom: (roomId: string, displayName: string, clientId?: string) => {
       setDisplayName(displayName ?? "");
       setCurrentRoomId(roomId);
-      // Emit room:join with clientId for reconnection support
-      if (socket?.connected) {
-        socket.emit("room:join", { roomId, displayName, clientId });
-      }
-      // If not connected yet, the connect handler will emit it
+      // Emit room:join - socket.io client queues if not connected yet
+      socket?.emit("room:join", { roomId, displayName, clientId });
     },
     leaveRoom,
     isLoading,
