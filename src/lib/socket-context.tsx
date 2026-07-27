@@ -370,6 +370,7 @@ export function SocketProvider({
 
   const kickPlayer = useCallback(
     (targetSocketId: string) => {
+      console.log("[SocketContext] kickPlayer called for:", targetSocketId, "socket:", socket?.id, "connected:", socket?.connected);
       socket?.emit("kickPlayer", { targetSocketId });
     },
     [socket],

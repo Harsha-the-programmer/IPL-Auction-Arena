@@ -111,9 +111,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   // Request team
   const requestTeam = (teamId: string) => {
     if (!hasSubmittedName) {
-      // The name form will be shown instead of this logic now
+      console.log("[Page] requestTeam called but hasSubmittedName is false");
       return;
     }
+    console.log("[Page] Emitting team:request for teamId:", teamId, "socket:", socket?.id, "connected:", socket?.connected);
     socket?.emit("team:request", { teamId });
   };
 

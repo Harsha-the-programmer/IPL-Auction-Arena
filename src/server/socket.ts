@@ -493,6 +493,7 @@ io.on(
       const roomId = socket.data.roomId;
       const userId = socket.data.userId;
       const displayName = socket.data.displayName;
+      console.log("[Server] team:request received:", { teamId, roomId, userId, displayName, socketId: socket.id });
       if (!roomId || !userId) return;
 
       try {
@@ -1067,6 +1068,7 @@ io.on(
     socket.on("kickPlayer", async ({ targetSocketId }) => {
       const roomId = socket.data.roomId;
       const isHost = socket.data.isHost;
+      console.log("[Server] kickPlayer received:", { targetSocketId, roomId, isHost, socketId: socket.id });
       if (!roomId || !isHost) return;
 
       try {
