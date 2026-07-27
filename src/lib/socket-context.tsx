@@ -101,12 +101,14 @@ export function SocketProvider({
 
     newSocket.on("connect", () => {
       console.log("[Socket] Connected:", newSocket.id);
-      // Auto-join if we have a persisted displayName
+      // Always try to join if we have a roomId and a name (from state or localStorage)
       const savedName = displayName || (typeof window !== "undefined" ? localStorage.getItem("ipl-auction-display-name") : null);
       const clientId = typeof window !== "undefined" ? localStorage.getItem("ipl-auction-client-id") : null;
-      if (savedName) {
+      if (currentRoomId && savedName) {
         console.log("[Socket] Auto-joining room:", currentRoomId, "displayName:", savedName);
         newSocket.emit("room:join", { roomId: currentRoomId, displayName: savedName, clientId });
+      } else if (currentRoomId && !savedName) {
+        console.log("[Socket] Connected but no displayName yet, waiting for user input");
       }
     });
 
