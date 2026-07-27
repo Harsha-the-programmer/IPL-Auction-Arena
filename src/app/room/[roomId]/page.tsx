@@ -74,10 +74,11 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   // We're in the room if our socketId matches a participant
   const hasSubmittedName = room?.participants.some((p) => p.socketId === mySocketId) ?? false;
 
-  // Handle name submission
+  // Handle name submission (for new users who don't have persisted name)
   const handleNameSubmit = () => {
     if (displayName.trim().length >= 2) {
-      // displayName is already persisted via socket-context, just handle team request
+      // Join the room with the entered name - this persists displayName and emits room:join
+      joinRoom(roomId, displayName, clientId);
       if (pendingTeamId) {
         socket?.emit("team:request", { teamId: pendingTeamId });
         setPendingTeamId(null);
