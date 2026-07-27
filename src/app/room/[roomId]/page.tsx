@@ -107,10 +107,11 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       );
       if (existingParticipant) {
         // Server already reconnected us - we're in the room with our name
+        joinRoom(roomId, existingParticipant.displayName, clientId);
         setHasSubmittedName(true);
       }
     }
-  }, [room, hasSubmittedName, clientId]);
+  }, [room, hasSubmittedName, clientId, roomId, joinRoom]);
 
   // Handle name submission
   const handleNameSubmit = () => {
