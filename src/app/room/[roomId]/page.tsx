@@ -114,8 +114,14 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       console.log("[Page] requestTeam called but hasSubmittedName is false");
       return;
     }
-    console.log("[Page] Emitting team:request for teamId:", teamId, "socket:", socket?.id, "connected:", socket?.connected);
+    console.log("[Page] Emitting team:request for teamId:", teamId, "socket:", socket?.id, "connected:", socket?.connected, "hasSocket:", !!socket);
     socket?.emit("team:request", { teamId });
+  };
+
+  // Kick player
+  const handleKickPlayer = (targetSocketId: string) => {
+    console.log("[Page] handleKickPlayer called for:", targetSocketId, "socket:", socket?.id, "connected:", socket?.connected, "hasSocket:", !!socket);
+    kickPlayer(targetSocketId);
   };
 
   // Show name entry form if user hasn't submitted name yet
@@ -364,7 +370,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 <div className={cn("w-2 h-2 rounded-full", p.isOnline ? "bg-green-500" : "bg-neutral-600")} />
                 {isHost && p.socketId !== mySocketId && !p.isHost && p.isOnline && (
                   <button
-                    onClick={() => kickPlayer(p.socketId)}
+                    onClick={() => handleKickPlayer(p.socketId)}
                     className="btn-ghost text-xs text-red-400 hover:bg-red-500/10 px-2 py-1"
                   >
                     Kick
