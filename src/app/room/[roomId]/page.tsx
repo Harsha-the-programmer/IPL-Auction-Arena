@@ -56,6 +56,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
   const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [hasSubmittedName, setHasSubmittedName] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   // Generate or retrieve persistent client ID for this browser
@@ -71,20 +72,28 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     return "";
   });
 
-  // We're in the room if our socketId matches a participant
-  const hasSubmittedName = room?.participants.some((p) => p.socketId === mySocketId) ?? false;
-
   // Handle name submission (for new users who don't have persisted name)
   const handleNameSubmit = () => {
     if (displayName.trim().length >= 2) {
       // Join the room with the entered name - this persists displayName and emits room:join
       joinRoom(roomId, displayName, clientId);
+      setHasSubmittedName(true);
       if (pendingTeamId) {
         socket?.emit("team:request", { teamId: pendingTeamId });
         setPendingTeamId(null);
       }
     }
   };
+
+  // If we have room state and our socketId matches a participant, we're in the room
+  useEffect(() => {
+    if (room && mySocketId) {
+      const inRoom = room.participants.some((p) => p.socketId === mySocketId);
+      if (inRoom) {
+        setHasSubmittedName(true);
+      }
+    }
+  }, [room, mySocketId]);
 
   // Copy room link
   const copyLink = () => {
