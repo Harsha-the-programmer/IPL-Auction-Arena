@@ -56,7 +56,6 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
   const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [hasSubmittedName, setHasSubmittedName] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   // Generate or retrieve persistent client ID for this browser
@@ -72,53 +71,13 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     return "";
   });
 
-  // Check if we should auto-reconnect (user has clientId and room already has this participant)
-  const [shouldAutoReconnect, setShouldAutoReconnect] = useState(false);
-
-  useEffect(() => {
-    if (room && clientId && !hasSubmittedName) {
-      const existingParticipant = room.participants.find(
-        (p) => p.clientId === clientId && p.isOnline
-      );
-      if (existingParticipant) {
-        setShouldAutoReconnect(true);
-      }
-    }
-  }, [room, clientId, hasSubmittedName]);
-
-  // Auto-reconnect if we found existing participant
-  useEffect(() => {
-    if (shouldAutoReconnect && !hasSubmittedName) {
-      const existingParticipant = room?.participants.find(
-        (p) => p.clientId === clientId && p.isOnline
-      );
-      if (existingParticipant) {
-        joinRoom(roomId, existingParticipant.displayName, clientId);
-        setHasSubmittedName(true);
-      }
-    }
-  }, [shouldAutoReconnect, room, clientId, roomId, joinRoom]);
-
-  // Also check on initial load if we're already in the room (from server-side reconnect)
-  useEffect(() => {
-    if (room && !hasSubmittedName && clientId) {
-      const existingParticipant = room.participants.find(
-        (p) => p.clientId === clientId && p.isOnline
-      );
-      if (existingParticipant) {
-        // Server already reconnected us - we're in the room with our name
-        joinRoom(roomId, existingParticipant.displayName, clientId);
-        setHasSubmittedName(true);
-      }
-    }
-  }, [room, hasSubmittedName, clientId, roomId, joinRoom]);
+  // We're in the room if our socketId matches a participant
+  const hasSubmittedName = room?.participants.some((p) => p.socketId === mySocketId) ?? false;
 
   // Handle name submission
   const handleNameSubmit = () => {
     if (displayName.trim().length >= 2) {
-      // Join the room with the entered name and clientId
-      joinRoom(roomId, displayName, clientId);
-      setHasSubmittedName(true);
+      // displayName is already persisted via socket-context, just handle team request
       if (pendingTeamId) {
         socket?.emit("team:request", { teamId: pendingTeamId });
         setPendingTeamId(null);

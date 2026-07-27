@@ -62,6 +62,23 @@ export function SocketProvider({
   const [error, setError] = useState<string | null>(null);
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
 
+  // Load persisted displayName on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedName = localStorage.getItem("ipl-auction-display-name");
+      if (savedName) {
+        setDisplayName(savedName);
+      }
+    }
+  }, []);
+
+  // Persist displayName when it changes
+  useEffect(() => {
+    if (displayName && typeof window !== "undefined") {
+      localStorage.setItem("ipl-auction-display-name", displayName);
+    }
+  }, [displayName]);
+
   // Connect socket when currentRoomId changes
   useEffect(() => {
     if (!currentRoomId) {
@@ -84,11 +101,12 @@ export function SocketProvider({
 
     newSocket.on("connect", () => {
       console.log("[Socket] Connected:", newSocket.id);
-      // Auto-join with current displayName and clientId
-      if (displayName) {
-        const clientId = typeof window !== "undefined" ? localStorage.getItem("ipl-auction-client-id") : null;
-        console.log("[Socket] Auto-joining room:", currentRoomId, "displayName:", displayName);
-        newSocket.emit("room:join", { roomId: currentRoomId, displayName, clientId });
+      // Auto-join if we have a persisted displayName
+      const savedName = displayName || (typeof window !== "undefined" ? localStorage.getItem("ipl-auction-display-name") : null);
+      const clientId = typeof window !== "undefined" ? localStorage.getItem("ipl-auction-client-id") : null;
+      if (savedName) {
+        console.log("[Socket] Auto-joining room:", currentRoomId, "displayName:", savedName);
+        newSocket.emit("room:join", { roomId: currentRoomId, displayName: savedName, clientId });
       }
     });
 
