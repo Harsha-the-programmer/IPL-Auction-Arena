@@ -122,6 +122,8 @@ export function SocketProvider({
       console.log(
         "[Socket] Room state received for room:",
         state.auctionRoomId,
+        "teams:",
+        state.teams.map(t => ({ teamId: t.teamId, claimStatus: t.claimStatus, requestedByUserId: t.requestedByUserId }))
       );
       setRoom(state);
       setMySocketId(newSocket.id ?? "");
@@ -131,13 +133,29 @@ export function SocketProvider({
       if (team) setMyTeam(team);
     });
 
-    newSocket.on("user:joined", (user: ParticipantState) => {
+    newSocket.on("team:requested", (data: { teamId: string; userId: string; displayName: string }) => {
+      console.log("[Socket] team:requested received:", data);
       setRoom((prev) =>
-        prev ? { ...prev, participants: [...prev.participants, user] } : null,
+        prev
+          ? {
+              ...prev,
+              teams: prev.teams.map((t) =>
+                t.teamId === data.teamId
+                  ? {
+                      ...t,
+                      claimStatus: "PENDING",
+                      requestedByUserId: data.userId,
+                      requestedByName: data.displayName,
+                    }
+                  : t,
+              ),
+            }
+          : null,
       );
     });
 
     newSocket.on("user:left", (socketId: string) => {
+      console.log("[Socket] user:left received:", socketId);
       setRoom((prev) =>
         prev
           ? {
