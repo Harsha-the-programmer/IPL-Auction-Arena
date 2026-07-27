@@ -453,8 +453,8 @@ io.on(
         }
 
         // Join socket room
-        socket.join(`room:${roomId}`);
-        socket.data.roomId = roomId;
+        socket.join(`room:${actualRoomId}`);
+        socket.data.roomId = actualRoomId;
         socket.data.userId = participant!.id;
         socket.data.displayName = displayName;
         socket.data.isHost = participant!.isHost;
@@ -465,12 +465,12 @@ io.on(
         // Notify others
         if (isNewParticipant) {
           socket
-            .to(`room:${roomId}`)
+            .to(`room:${actualRoomId}`)
             .emit("user:joined", mapParticipantToState(participant!));
         }
 
         console.log(
-          `[Socket] ${displayName} joined room ${roomId} (host: ${participant!.isHost})`,
+          `[Socket] ${displayName} joined room ${actualRoomId} (host: ${participant!.isHost})`,
         );
       } catch (error) {
         console.error("[Socket] Join error:", error);
