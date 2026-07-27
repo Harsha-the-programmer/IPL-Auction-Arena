@@ -165,6 +165,9 @@ export function SocketProvider({
                       }
                     : t,
                 ),
+                participants: prev.participants.map((p) =>
+                  p.socketId === data.userId ? { ...p, teamId: data.teamId } : p,
+                ),
               }
             : null,
         );
@@ -183,8 +186,32 @@ export function SocketProvider({
                     ? {
                         ...t,
                         claimStatus: "PENDING",
-                        requestedBySocketId: data.userId,
+                        requestedByUserId: data.userId,
                         requestedByName: data.displayName,
+                      }
+                    : t,
+                ),
+              }
+            : null,
+        );
+      },
+    );
+
+    newSocket.on(
+      "team:rejected",
+      (data: { teamId: string; userId: string }) => {
+        setRoom((prev) =>
+          prev
+            ? {
+                ...prev,
+                teams: prev.teams.map((t) =>
+                  t.teamId === data.teamId
+                    ? {
+                        ...t,
+                        claimStatus: "UNCLAIMED",
+                        requestedBySocketId: null,
+                        requestedByUserId: null,
+                        requestedByName: null,
                       }
                     : t,
                 ),
@@ -276,15 +303,15 @@ export function SocketProvider({
   );
 
   const approveTeam = useCallback(
-    (teamId: string, userId: string) => {
-      socket?.emit("team:approve", { teamId, socketId: userId });
+    (teamId: string, participantId: string) => {
+      socket?.emit("team:approve", { teamId, participantId });
     },
     [socket],
   );
 
   const rejectTeam = useCallback(
-    (teamId: string, userId: string) => {
-      socket?.emit("team:reject", { teamId, socketId: userId });
+    (teamId: string, participantId: string) => {
+      socket?.emit("team:reject", { teamId, participantId });
     },
     [socket],
   );

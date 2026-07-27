@@ -88,8 +88,8 @@ export interface ScoreState {
 export interface ClientToServerEvents {
   'room:join': (data: { roomId: string; displayName: string; clientId?: string }) => void
   'team:request': (data: { teamId: string }) => void
-  'team:approve': (data: { teamId: string; socketId: string }) => void
-  'team:reject': (data: { teamId: string; socketId: string }) => void
+  'team:approve': (data: { teamId: string; participantId: string }) => void
+  'team:reject': (data: { teamId: string; participantId: string }) => void
   'lineup:update': (data: { lineupSlots: LineupSlotInput[] }) => void
   'lineup:lock': (data: { position: number }) => void
   'match:start': () => void

@@ -329,15 +329,15 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                     {isPending && isHost && (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => approveTeam(team.teamId, team.requestedBySocketId!)}
-                          disabled={!team.requestedBySocketId}
+                          onClick={() => approveTeam(team.teamId, team.requestedByUserId!)}
+                          disabled={!team.requestedByUserId}
                           className="btn-secondary text-xs flex-1"
                         >
                           Approve
                         </button>
                         <button
-                          onClick={() => rejectTeam(team.teamId, team.requestedBySocketId!)}
-                          disabled={!team.requestedBySocketId}
+                          onClick={() => rejectTeam(team.teamId, team.requestedByUserId!)}
+                          disabled={!team.requestedByUserId}
                           className="btn-ghost text-xs flex-1 text-red-400 hover:bg-red-500/10"
                         >
                           Reject

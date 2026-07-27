@@ -448,6 +448,17 @@ io.on(
             });
             room.hostSocketId = socket.id;
           }
+          // If this participant owns a team, update team's ownerSocketId
+          if (existingParticipant.teamId) {
+            const team = room.teams.find((t) => t.id === existingParticipant.teamId);
+            if (team) {
+              await prisma.team.update({
+                where: { id: team.id },
+                data: { ownerSocketId: socket.id },
+              });
+              team.ownerSocketId = socket.id;
+            }
+          }
           setRoomCache(roomId, room);
           participant = existingParticipant;
         }
@@ -522,7 +533,7 @@ io.on(
       }
     });
 
-    socket.on("team:approve", async ({ teamId, socketId: targetSocketId }) => {
+    socket.on("team:approve", async ({ teamId, participantId }) => {
       const roomId = socket.data.roomId;
       const isHost = socket.data.isHost;
       if (!roomId || !isHost) return;
@@ -533,9 +544,12 @@ io.on(
 
         const team = room.teams.find((t) => t.teamId === teamId);
         if (!team || team.claimStatus !== "PENDING") return;
-        if (team.requestedBySocketId !== targetSocketId) return;
+        if (team.requestedByUserId !== participantId) return;
 
-        const participantId = team.requestedByUserId;
+        // Find the participant to get their current socketId
+        const participant = room.participants.find((p) => p.id === participantId);
+        if (!participant) return;
+        const targetSocketId = participant.socketId;
 
         // Update in DB - use team.id (UUID) not team.teamId
         await prisma.team.update({
@@ -551,12 +565,10 @@ io.on(
         });
 
         // Update participant's team using participant ID
-        if (participantId) {
-          await prisma.participant.update({
-            where: { id: participantId },
-            data: { teamId: team.id },
-          });
-        }
+        await prisma.participant.update({
+          where: { id: participantId },
+          data: { teamId: team.id },
+        });
 
         team.claimStatus = "APPROVED";
         team.ownerSocketId = targetSocketId;
@@ -601,7 +613,7 @@ io.on(
       }
     });
 
-    socket.on("team:reject", async ({ teamId, socketId: targetSocketId }) => {
+    socket.on("team:reject", async ({ teamId, participantId }) => {
       const roomId = socket.data.roomId;
       const isHost = socket.data.isHost;
       if (!roomId || !isHost) return;
@@ -612,9 +624,7 @@ io.on(
 
         const team = room.teams.find((t) => t.teamId === teamId);
         if (!team || team.claimStatus !== "PENDING") return;
-        if (team.requestedBySocketId !== targetSocketId) return;
-
-        const participantId = team.requestedByUserId;
+        if (team.requestedByUserId !== participantId) return;
 
         await prisma.team.update({
           where: { id: team.id },
@@ -634,9 +644,13 @@ io.on(
 
         io.to(`room:${roomId}`).emit("team:rejected", {
           teamId,
-          userId: targetSocketId,
+          userId: participantId,
         });
-        io.to(targetSocketId).emit("room:state", room);
+        // Notify the rejected user by finding their current socket
+        const rejectedParticipant = room.participants.find((p) => p.id === participantId);
+        if (rejectedParticipant) {
+          io.to(rejectedParticipant.socketId).emit("room:state", room);
+        }
       } catch (error) {
         console.error("[Socket] Team reject error:", error);
       }
