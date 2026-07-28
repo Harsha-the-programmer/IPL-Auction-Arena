@@ -155,7 +155,7 @@ export function SocketProvider({
     });
 
     newSocket.on("user:left", (socketId: string) => {
-      console.log("[Socket] user:left received:", socketId);
+      console.log("[SocketContext] 📥 user:left received:", socketId);
       setRoom((prev) =>
         prev
           ? {
