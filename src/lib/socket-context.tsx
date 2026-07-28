@@ -100,27 +100,33 @@ export function SocketProvider({
     });
 
     newSocket.on("connect", () => {
-      console.log("[Socket] Connected:", newSocket.id);
-      // Always try to join if we have a roomId and a name (from state or localStorage)
+      console.log("[SocketContext] ✅ CONNECTED:", newSocket.id, "roomId:", currentRoomId);
       const savedName = displayName || (typeof window !== "undefined" ? localStorage.getItem("ipl-auction-display-name") : null);
       const clientId = typeof window !== "undefined" ? localStorage.getItem("ipl-auction-client-id") : null;
       if (currentRoomId && savedName) {
-        console.log("[Socket] Auto-joining room:", currentRoomId, "displayName:", savedName);
+        console.log("[SocketContext] 📤 Auto-joining room:", currentRoomId, "displayName:", savedName);
         newSocket.emit("room:join", { roomId: currentRoomId, displayName: savedName, clientId });
       } else if (currentRoomId && !savedName) {
-        console.log("[Socket] Connected but no displayName yet, waiting for user input");
+        console.log("[SocketContext] ⏳ Connected but no displayName yet");
+      }
+    });
+
+    // Catch-all to debug what events are received
+    newSocket.onAny((eventName, ...args) => {
+      if (!eventName.startsWith("room:") && !eventName.startsWith("user:") && !eventName.startsWith("team:")) {
+        console.log("[SocketContext] 📥 ANY event:", eventName, args);
       }
     });
 
     newSocket.on("connect_error", (err) => {
-      console.error("[Socket] Connection error:", err.message);
+      console.error("[SocketContext] ❌ Connection error:", err.message);
       setError("Connection failed: " + err.message);
       setIsLoading(false);
     });
 
     newSocket.on("room:state", (state: RoomState) => {
       console.log(
-        "[Socket] Room state received for room:",
+        "[SocketContext] 📥 room:state received for room:",
         state.auctionRoomId,
         "teams:",
         state.teams.map(t => ({ teamId: t.teamId, claimStatus: t.claimStatus, requestedByUserId: t.requestedByUserId }))
@@ -134,7 +140,7 @@ export function SocketProvider({
     });
 
     newSocket.on("team:requested", (data: { teamId: string; userId: string; displayName: string }) => {
-      console.log("[Socket] team:requested received:", data);
+      console.log("[SocketContext] 📥 team:requested received:", data);
       setRoom((prev) =>
         prev
           ? {
@@ -148,6 +154,52 @@ export function SocketProvider({
                       requestedByName: data.displayName,
                     }
                   : t,
+              ),
+            }
+          : null,
+      );
+    });
+
+    newSocket.on("team:rejected", (data: { teamId: string; userId: string }) => {
+      console.log("[SocketContext] 📥 team:rejected received:", data);
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              teams: prev.teams.map((t) =>
+                t.teamId === data.teamId
+                  ? {
+                      ...t,
+                      claimStatus: "UNCLAIMED",
+                      requestedBySocketId: null,
+                      requestedByUserId: null,
+                      requestedByName: null,
+                    }
+                  : t,
+              ),
+            }
+          : null,
+      );
+    });
+
+    newSocket.on("team:claimed", (data: { teamId: string; userId: string; displayName: string }) => {
+      console.log("[SocketContext] 📥 team:claimed received:", data);
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              teams: prev.teams.map((t) =>
+                t.teamId === data.teamId
+                  ? {
+                      ...t,
+                      claimStatus: "APPROVED",
+                      ownerSocketId: data.userId,
+                      ownerName: data.displayName,
+                    }
+                  : t,
+              ),
+              participants: prev.participants.map((p) =>
+                p.socketId === data.userId ? { ...p, teamId: data.teamId } : p,
               ),
             }
           : null,

@@ -522,7 +522,10 @@ io.on(
 
         // Notify host
         console.log("[Server] Emitting team:requested:", { teamId, userId, displayName: displayName || "Unknown" });
-        io.to(`room:${roomId}`).emit("team:requested", {
+        const roomName = `room:${roomId}`;
+        console.log("[Server] Room name:", roomName);
+        console.log("[Server] Sockets in room:", io.sockets.adapter.rooms.get(roomName)?.size || 0);
+        io.to(roomName).emit("team:requested", {
           teamId,
           userId,
           displayName: displayName || "Unknown",
