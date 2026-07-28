@@ -7,6 +7,9 @@ import {
   Users,
   Crown,
   Loader2,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
   Copy,
   Share2,
   Lock,
@@ -72,10 +75,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     return "";
   });
 
-  // Handle name submission (for new users who don't have persisted name)
+  // Handle name submission
   const handleNameSubmit = () => {
     if (displayName.trim().length >= 2) {
-      // Join the room with the entered name - this persists displayName and emits room:join
+      // Join the room with the entered name and clientId
       joinRoom(roomId, displayName, clientId);
       setHasSubmittedName(true);
       if (pendingTeamId) {
@@ -84,16 +87,6 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       }
     }
   };
-
-  // If we have room state and our socketId matches a participant, we're in the room
-  useEffect(() => {
-    if (room && mySocketId) {
-      const inRoom = room.participants.some((p) => p.socketId === mySocketId);
-      if (inRoom) {
-        setHasSubmittedName(true);
-      }
-    }
-  }, [room, mySocketId]);
 
   // Copy room link
   const copyLink = () => {
@@ -111,17 +104,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   // Request team
   const requestTeam = (teamId: string) => {
     if (!hasSubmittedName) {
-      console.log("[Page] requestTeam called but hasSubmittedName is false");
+      // The name form will be shown instead of this logic now
       return;
     }
-    console.log("[Page] Emitting team:request for teamId:", teamId, "socket:", socket?.id, "connected:", socket?.connected, "hasSocket:", !!socket);
     socket?.emit("team:request", { teamId });
-  };
-
-  // Kick player
-  const handleKickPlayer = (targetSocketId: string) => {
-    console.log("[Page] handleKickPlayer called for:", targetSocketId, "socket:", socket?.id, "connected:", socket?.connected, "hasSocket:", !!socket);
-    kickPlayer(targetSocketId);
   };
 
   // Show name entry form if user hasn't submitted name yet
@@ -245,6 +231,31 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+        {/* Pending Requests (Host Only) */}
+        {isHost && pendingTeams.length > 0 && (
+          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+            <h3 className="font-semibold text-amber-400 mb-3 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" /> Pending Team Requests
+            </h3>
+            <div className="flex flex-wrap gap-3">
+              {pendingTeams.map((team) => (
+                <div key={team.teamId} className="flex items-center gap-3 px-4 py-2 bg-neutral-800/50 rounded-lg">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: team.color }}>
+                    {team.shortName}
+                  </div>
+                  <span className="font-medium">{team.requestedByName} wants {team.name}</span>
+                  <button onClick={() => socket?.emit("team:approve", { teamId: team.teamId, socketId: team.requestedBySocketId! })} className="btn-primary text-xs px-3 py-1">
+                    <CheckCircle className="w-3 h-3" /> Approve
+                  </button>
+                  <button onClick={() => socket?.emit("team:reject", { teamId: team.teamId, socketId: team.requestedBySocketId! })} className="btn-danger text-xs px-3 py-1">
+                    <XCircle className="w-3 h-3" /> Reject
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Team Grid */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -370,7 +381,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 <div className={cn("w-2 h-2 rounded-full", p.isOnline ? "bg-green-500" : "bg-neutral-600")} />
                 {isHost && p.socketId !== mySocketId && !p.isHost && p.isOnline && (
                   <button
-                    onClick={() => handleKickPlayer(p.socketId)}
+                    onClick={() => kickPlayer(p.socketId)}
                     className="btn-ghost text-xs text-red-400 hover:bg-red-500/10 px-2 py-1"
                   >
                     Kick

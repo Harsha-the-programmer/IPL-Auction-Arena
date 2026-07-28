@@ -100,36 +100,28 @@ export function SocketProvider({
     });
 
     newSocket.on("connect", () => {
-      console.log("[SocketContext] ✅ CONNECTED:", newSocket.id, "roomId:", currentRoomId);
+      console.log("[Socket] Connected:", newSocket.id);
+      // Always try to join if we have a roomId and a name (from state or localStorage)
       const savedName = displayName || (typeof window !== "undefined" ? localStorage.getItem("ipl-auction-display-name") : null);
       const clientId = typeof window !== "undefined" ? localStorage.getItem("ipl-auction-client-id") : null;
       if (currentRoomId && savedName) {
-        console.log("[SocketContext] 📤 Auto-joining room:", currentRoomId, "displayName:", savedName);
+        console.log("[Socket] Auto-joining room:", currentRoomId, "displayName:", savedName);
         newSocket.emit("room:join", { roomId: currentRoomId, displayName: savedName, clientId });
       } else if (currentRoomId && !savedName) {
-        console.log("[SocketContext] ⏳ Connected but no displayName yet");
-      }
-    });
-
-    // Catch-all to debug what events are received
-    newSocket.onAny((eventName, ...args) => {
-      if (!eventName.startsWith("room:") && !eventName.startsWith("user:") && !eventName.startsWith("team:")) {
-        console.log("[SocketContext] 📥 ANY event:", eventName, args);
+        console.log("[Socket] Connected but no displayName yet, waiting for user input");
       }
     });
 
     newSocket.on("connect_error", (err) => {
-      console.error("[SocketContext] ❌ Connection error:", err.message);
+      console.error("[Socket] Connection error:", err.message);
       setError("Connection failed: " + err.message);
       setIsLoading(false);
     });
 
     newSocket.on("room:state", (state: RoomState) => {
       console.log(
-        "[SocketContext] 📥 room:state received for room:",
+        "[Socket] Room state received for room:",
         state.auctionRoomId,
-        "teams:",
-        state.teams.map(t => ({ teamId: t.teamId, claimStatus: t.claimStatus, requestedByUserId: t.requestedByUserId }))
       );
       setRoom(state);
       setMySocketId(newSocket.id ?? "");
@@ -139,75 +131,13 @@ export function SocketProvider({
       if (team) setMyTeam(team);
     });
 
-    newSocket.on("team:requested", (data: { teamId: string; userId: string; displayName: string }) => {
-      console.log("[SocketContext] 📥 team:requested received:", data);
+    newSocket.on("user:joined", (user: ParticipantState) => {
       setRoom((prev) =>
-        prev
-          ? {
-              ...prev,
-              teams: prev.teams.map((t) =>
-                t.teamId === data.teamId
-                  ? {
-                      ...t,
-                      claimStatus: "PENDING",
-                      requestedByUserId: data.userId,
-                      requestedByName: data.displayName,
-                    }
-                  : t,
-              ),
-            }
-          : null,
-      );
-    });
-
-    newSocket.on("team:rejected", (data: { teamId: string; userId: string }) => {
-      console.log("[SocketContext] 📥 team:rejected received:", data);
-      setRoom((prev) =>
-        prev
-          ? {
-              ...prev,
-              teams: prev.teams.map((t) =>
-                t.teamId === data.teamId
-                  ? {
-                      ...t,
-                      claimStatus: "UNCLAIMED",
-                      requestedBySocketId: null,
-                      requestedByUserId: null,
-                      requestedByName: null,
-                    }
-                  : t,
-              ),
-            }
-          : null,
-      );
-    });
-
-    newSocket.on("team:claimed", (data: { teamId: string; userId: string; displayName: string }) => {
-      console.log("[SocketContext] 📥 team:claimed received:", data);
-      setRoom((prev) =>
-        prev
-          ? {
-              ...prev,
-              teams: prev.teams.map((t) =>
-                t.teamId === data.teamId
-                  ? {
-                      ...t,
-                      claimStatus: "APPROVED",
-                      ownerSocketId: data.userId,
-                      ownerName: data.displayName,
-                    }
-                  : t,
-              ),
-              participants: prev.participants.map((p) =>
-                p.socketId === data.userId ? { ...p, teamId: data.teamId } : p,
-              ),
-            }
-          : null,
+        prev ? { ...prev, participants: [...prev.participants, user] } : null,
       );
     });
 
     newSocket.on("user:left", (socketId: string) => {
-      console.log("[SocketContext] 📥 user:left received:", socketId);
       setRoom((prev) =>
         prev
           ? {
@@ -241,7 +171,6 @@ export function SocketProvider({
     newSocket.on(
       "team:claimed",
       (data: { teamId: string; userId: string; displayName: string }) => {
-        console.log("[SocketContext] team:claimed received:", data);
         setRoom((prev) =>
           prev
             ? {
@@ -268,7 +197,6 @@ export function SocketProvider({
     newSocket.on(
       "team:requested",
       (data: { teamId: string; userId: string; displayName: string }) => {
-        console.log("[SocketContext] team:requested received:", data);
         setRoom((prev) =>
           prev
             ? {
@@ -292,7 +220,6 @@ export function SocketProvider({
     newSocket.on(
       "team:rejected",
       (data: { teamId: string; userId: string }) => {
-        console.log("[SocketContext] team:rejected received:", data);
         setRoom((prev) =>
           prev
             ? {
@@ -443,7 +370,6 @@ export function SocketProvider({
 
   const kickPlayer = useCallback(
     (targetSocketId: string) => {
-      console.log("[SocketContext] kickPlayer called for:", targetSocketId, "socket:", socket?.id, "connected:", socket?.connected);
       socket?.emit("kickPlayer", { targetSocketId });
     },
     [socket],
@@ -464,8 +390,11 @@ export function SocketProvider({
     joinRoom: (roomId: string, displayName: string, clientId?: string) => {
       setDisplayName(displayName ?? "");
       setCurrentRoomId(roomId);
-      // Emit room:join - socket.io client queues if not connected yet
-      socket?.emit("room:join", { roomId, displayName, clientId });
+      // Emit room:join with clientId for reconnection support
+      if (socket?.connected) {
+        socket.emit("room:join", { roomId, displayName, clientId });
+      }
+      // If not connected yet, the connect handler will emit it
     },
     leaveRoom,
     isLoading,
