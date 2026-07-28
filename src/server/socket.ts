@@ -521,6 +521,7 @@ io.on(
         setRoomCache(roomId, room);
 
         // Notify host
+        console.log("[Server] Emitting team:requested:", { teamId, userId, displayName: displayName || "Unknown" });
         io.to(`room:${roomId}`).emit("team:requested", {
           teamId,
           userId,
@@ -599,6 +600,7 @@ io.on(
         setRoomCache(roomId, room);
 
         // Notify all
+        console.log("[Server] Emitting team:claimed:", { teamId, userId: targetSocketId, displayName: team.ownerName || "Unknown" });
         io.to(`room:${roomId}`).emit("team:claimed", {
           teamId,
           userId: targetSocketId,
@@ -647,6 +649,7 @@ io.on(
           teamId,
           userId: participantId,
         });
+        console.log("[Server] Emitting team:rejected:", { teamId, userId: participantId });
         // Notify the rejected user by finding their current socket
         const rejectedParticipant = room.participants.find((p) => p.id === participantId);
         if (rejectedParticipant) {

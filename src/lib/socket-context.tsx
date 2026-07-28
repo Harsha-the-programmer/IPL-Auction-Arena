@@ -189,6 +189,7 @@ export function SocketProvider({
     newSocket.on(
       "team:claimed",
       (data: { teamId: string; userId: string; displayName: string }) => {
+        console.log("[SocketContext] team:claimed received:", data);
         setRoom((prev) =>
           prev
             ? {
@@ -215,6 +216,7 @@ export function SocketProvider({
     newSocket.on(
       "team:requested",
       (data: { teamId: string; userId: string; displayName: string }) => {
+        console.log("[SocketContext] team:requested received:", data);
         setRoom((prev) =>
           prev
             ? {
@@ -238,6 +240,7 @@ export function SocketProvider({
     newSocket.on(
       "team:rejected",
       (data: { teamId: string; userId: string }) => {
+        console.log("[SocketContext] team:rejected received:", data);
         setRoom((prev) =>
           prev
             ? {
