@@ -270,7 +270,8 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               const isMe = team.ownerSocketId === mySocketId;
               const isClaimed = team.claimStatus === "APPROVED";
               const isPending = team.claimStatus === "PENDING";
-              const canRequest = team.claimStatus === "UNCLAIMED";
+              const myTeamId = room?.participants.find((p) => p.socketId === mySocketId)?.teamId;
+              const canRequest = team.claimStatus === "UNCLAIMED" && !myTeamId;
 
               return (
                 <div

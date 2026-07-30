@@ -504,6 +504,13 @@ io.on(
         const room = getRoomCache(roomId);
         if (!room) return;
 
+        // Check if participant already has a team
+        const participant = room.participants.find((p) => p.id === userId);
+        if (participant?.teamId) {
+          socket.emit("error", "You already have a team");
+          return;
+        }
+
         const team = room.teams.find((t) => t.teamId === teamId);
         if (!team || team.claimStatus !== "UNCLAIMED") return;
 
