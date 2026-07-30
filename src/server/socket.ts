@@ -417,6 +417,8 @@ io.on(
 
           room.participants.push(mapParticipantToState(participant));
           setRoomCache(roomId, room);
+          // Also cache by UUID for lookups using socket.data.roomId
+          setRoomCache(actualRoomId, room);
         } else {
           // Reconnection or returning user - update socketId and online status
           if (!participant) {
@@ -460,6 +462,8 @@ io.on(
             }
           }
           setRoomCache(roomId, room);
+          // Also cache by UUID for lookups using socket.data.roomId
+          setRoomCache(actualRoomId, room);
           participant = existingParticipant;
         }
 
