@@ -612,6 +612,7 @@ io.on(
           teamId,
           userId: targetSocketId,
           displayName: team.ownerName || "Unknown",
+          lineup: team.lineup,
         });
 
         // Notify the approved user

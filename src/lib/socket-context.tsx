@@ -170,7 +170,7 @@ export function SocketProvider({
 
     newSocket.on(
       "team:claimed",
-      (data: { teamId: string; userId: string; displayName: string }) => {
+      (data: { teamId: string; userId: string; displayName: string; lineup: LineupSlotState[] | null }) => {
         setRoom((prev) =>
           prev
             ? {
@@ -182,6 +182,8 @@ export function SocketProvider({
                         claimStatus: "APPROVED",
                         ownerSocketId: data.userId,
                         ownerName: data.displayName,
+                        lineup: data.lineup,
+                        isLocked: false,
                       }
                     : t,
                 ),

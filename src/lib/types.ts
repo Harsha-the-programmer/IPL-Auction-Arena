@@ -110,7 +110,7 @@ export interface ServerToClientEvents {
   'room:state': (state: RoomState) => void
   'user:joined': (user: ParticipantState) => void
   'user:left': (socketId: string) => void
-  'team:claimed': (data: { teamId: string; userId: string; displayName: string }) => void
+  'team:claimed': (data: { teamId: string; userId: string; displayName: string; lineup: LineupSlotState[] | null }) => void
   'team:requested': (data: { teamId: string; userId: string; displayName: string }) => void
   'team:approved': (data: { teamId: string; userId: string; displayName: string }) => void
   'team:rejected': (data: { teamId: string; userId: string }) => void
