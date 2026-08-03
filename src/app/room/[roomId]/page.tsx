@@ -267,10 +267,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               const team = room?.teams.find((t) => t.teamId === teamConfig.id);
               if (!team) return null;
 
-              const isMe = team.ownerSocketId === mySocketId;
+              const myTeamId = room?.participants.find((p) => p.socketId === mySocketId)?.teamId;
+              const isMe = myTeamId === team.id;
               const isClaimed = team.claimStatus === "APPROVED";
               const isPending = team.claimStatus === "PENDING";
-              const myTeamId = room?.participants.find((p) => p.socketId === mySocketId)?.teamId;
               const canRequest = team.claimStatus === "UNCLAIMED" && !myTeamId;
 
               return (
