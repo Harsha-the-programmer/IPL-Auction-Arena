@@ -46,7 +46,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     mySocketId,
     displayName,
     setDisplayName,
-    isHost,
+    isHost: contextIsHost,
     error,
     joinRoom,
     isLoading,
@@ -61,6 +61,9 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   const [copied, setCopied] = useState(false);
   const [hasSubmittedName, setHasSubmittedName] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  // Derive isHost from current participant's isHost property (persists across refresh)
+  const isHost = room?.participants.find((p) => p.socketId === mySocketId)?.isHost ?? false;
 
   // Generate or retrieve persistent client ID for this browser
   const [clientId] = useState(() => {
