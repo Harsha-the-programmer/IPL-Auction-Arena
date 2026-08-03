@@ -1133,21 +1133,25 @@ io.on(
       const userId = socket.data.userId;
 
       if (roomId && userId) {
-        // Update participant offline
-        await prisma.participant.update({
-          where: { id: userId },
-          data: { isOnline: false, lastSeenAt: new Date() },
-        });
-
         const room = getRoomCache(roomId);
         if (room) {
           const participant = room.participants.find((p) => p.id === userId);
+          
+          // Check if participant was kicked (deleted from room cache)
+          const wasKicked = !participant;
+
           if (participant) {
+            // Just disconnected - mark offline but keep in room
+            await prisma.participant.update({
+              where: { id: userId },
+              data: { isOnline: false, lastSeenAt: new Date() },
+            });
             participant.isOnline = false;
           }
 
-          // If host left, transfer host to next senior participant
-          if (room.hostSocketId === socket.id) {
+          // Only transfer host if the host was KICKED (deleted from room)
+          // If host just disconnected, they should be able to reconnect and get host back
+          if (room.hostSocketId === socket.id && wasKicked) {
             const onlineParticipants = room.participants
               .filter((p) => p.isOnline && p.id !== userId)
               .sort(
@@ -1160,6 +1164,16 @@ io.on(
               const newHost = onlineParticipants[0];
               room.hostSocketId = newHost.socketId;
               newHost.isHost = true;
+
+              // Set old host's isHost to false
+              const oldHost = room.participants.find((p) => p.id === userId);
+              if (oldHost) {
+                oldHost.isHost = false;
+                await prisma.participant.update({
+                  where: { id: oldHost.id },
+                  data: { isHost: false },
+                });
+              }
 
               await prisma.room.update({
                 where: { id: roomId },
@@ -1178,6 +1192,12 @@ io.on(
 
               io.to(`room:${roomId}`).emit("host:changed", newHost.socketId);
             }
+          } else if (participant) {
+            // Just mark offline in DB
+            await prisma.participant.update({
+              where: { id: userId },
+              data: { isOnline: false, lastSeenAt: new Date() },
+            });
           }
 
           setRoomCache(roomId, room);
