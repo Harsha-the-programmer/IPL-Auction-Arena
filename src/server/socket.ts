@@ -620,9 +620,10 @@ io.on(
 
         // Notify all
         console.log("[Server] Emitting team:claimed:", { teamId, userId: targetSocketId, displayName: team.ownerName || "Unknown" });
+        const participantForClaim = room.participants.find((p) => p.socketId === targetSocketId);
         io.to(`room:${roomId}`).emit("team:claimed", {
           teamId: team.id,
-          userId: targetSocketId,
+          userId: participantForClaim?.id ?? participantId,
           displayName: team.ownerName || "Unknown",
           lineup: team.lineup,
         });

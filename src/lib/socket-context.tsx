@@ -214,7 +214,7 @@ export function SocketProvider({
                     : t,
                 ),
                 participants: prev.participants.map((p) =>
-                  p.socketId === data.userId ? { ...p, teamId: data.teamId } : p,
+                  p.id === data.userId ? { ...p, teamId: data.teamId } : p,
                 ),
               }
             : null,
