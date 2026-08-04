@@ -616,7 +616,7 @@ io.on(
         // Notify all
         console.log("[Server] Emitting team:claimed:", { teamId, userId: targetSocketId, displayName: team.ownerName || "Unknown" });
         io.to(`room:${roomId}`).emit("team:claimed", {
-          teamId,
+          teamId: team.id,
           userId: targetSocketId,
           displayName: team.ownerName || "Unknown",
           lineup: team.lineup,
