@@ -1100,6 +1100,46 @@ io.on(
         // Cannot kick host
         if (participant.isHost) return;
 
+        // Find and reset the team owned by this participant
+        let kickedTeam = null;
+        if (participant.teamId) {
+          kickedTeam = room.teams.find((t) => t.id === participant.teamId);
+          if (kickedTeam) {
+            // Reset team to UNCLAIMED
+            await prisma.team.update({
+              where: { id: kickedTeam.id },
+              data: {
+                claimStatus: "UNCLAIMED",
+                ownerSocketId: null,
+                ownerName: null,
+                requestedBySocketId: null,
+                requestedByUserId: null,
+                requestedByName: null,
+              },
+            });
+
+            // Delete the lineup
+            await prisma.lineup.deleteMany({ where: { teamId: kickedTeam.id } });
+
+            // Update cache
+            kickedTeam.claimStatus = "UNCLAIMED";
+            kickedTeam.ownerSocketId = null;
+            kickedTeam.ownerName = null;
+            kickedTeam.requestedBySocketId = null;
+            kickedTeam.requestedByUserId = null;
+            kickedTeam.requestedByName = null;
+            kickedTeam.lineup = null;
+            kickedTeam.isLocked = false;
+            setRoomCache(roomId, room);
+
+            // Notify room that team is available again
+            io.to(`room:${roomId}`).emit("team:released", {
+              teamId: kickedTeam.id,
+              teamShortName: kickedTeam.teamId,
+            });
+          }
+        }
+
         // Delete participant from DB (so they can't reconnect with same clientId)
         await prisma.participant.delete({
           where: { id: participant.id },

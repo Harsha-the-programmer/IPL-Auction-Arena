@@ -244,6 +244,34 @@ export function SocketProvider({
     );
 
     newSocket.on(
+      "team:released",
+      (data: { teamId: string; teamShortName: string }) => {
+        setRoom((prev) =>
+          prev
+            ? {
+                ...prev,
+                teams: prev.teams.map((t) =>
+                  t.id === data.teamId
+                    ? {
+                        ...t,
+                        claimStatus: "UNCLAIMED",
+                        ownerSocketId: null,
+                        ownerName: null,
+                        requestedBySocketId: null,
+                        requestedByUserId: null,
+                        requestedByName: null,
+                        lineup: null,
+                        isLocked: false,
+                      }
+                    : t,
+                ),
+              }
+            : null,
+        );
+      },
+    );
+
+    newSocket.on(
       "lineup:synced",
       (data: {
         teamId: string;

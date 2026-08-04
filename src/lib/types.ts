@@ -114,6 +114,7 @@ export interface ServerToClientEvents {
   'team:requested': (data: { teamId: string; userId: string; displayName: string }) => void
   'team:approved': (data: { teamId: string; userId: string; displayName: string }) => void
   'team:rejected': (data: { teamId: string; userId: string }) => void
+  'team:released': (data: { teamId: string; teamShortName: string }) => void
   'lineup:synced': (data: { teamId: string; lineupSlots: LineupSlotState[]; lockedPositions: number[] }) => void
   'pending:update': (data: { waitingFor: string[] }) => void
   'round:start': (data: { roundNumber: number; position: number; countdown: number }) => void
