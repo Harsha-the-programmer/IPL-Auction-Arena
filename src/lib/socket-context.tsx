@@ -150,6 +150,32 @@ export function SocketProvider({
       );
     });
 
+    newSocket.on("user:offline", (data: { participantId: string; socketId: string }) => {
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              participants: prev.participants.map((p) =>
+                p.id === data.participantId ? { ...p, isOnline: false, socketId: data.socketId } : p,
+              ),
+            }
+          : null,
+      );
+    });
+
+    newSocket.on("user:online", (user: ParticipantState) => {
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              participants: prev.participants.map((p) =>
+                p.id === user.id ? { ...p, ...user, isOnline: true } : p,
+              ),
+            }
+          : null,
+      );
+    });
+
     newSocket.on("host:changed", (newHostSocketId: string) => {
       console.log("[Socket] Host changed to:", newHostSocketId);
       setRoom((prev) =>

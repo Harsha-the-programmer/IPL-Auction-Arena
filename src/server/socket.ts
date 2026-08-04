@@ -482,6 +482,11 @@ io.on(
           socket
             .to(`room:${actualRoomId}`)
             .emit("user:joined", mapParticipantToState(participant!));
+        } else {
+          // Reconnection - notify others this user is back online
+          socket
+            .to(`room:${actualRoomId}`)
+            .emit("user:online", mapParticipantToState(participant!));
         }
 
         console.log(
@@ -1238,10 +1243,15 @@ io.on(
               where: { id: userId },
               data: { isOnline: false, lastSeenAt: new Date() },
             });
+
+            // Notify others this user went offline (but still in room)
+            socket.to(`room:${roomId}`).emit("user:offline", {
+              participantId: userId,
+              socketId: socket.id,
+            });
           }
 
           setRoomCache(roomId, room);
-          socket.to(`room:${roomId}`).emit("user:left", socket.id);
         }
       }
     });
