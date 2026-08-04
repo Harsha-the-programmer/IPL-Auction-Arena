@@ -202,7 +202,7 @@ export function SocketProvider({
             ? {
                 ...prev,
                 teams: prev.teams.map((t) =>
-                  t.teamId === data.teamId
+                  t.id === data.teamId
                     ? {
                         ...t,
                         claimStatus: "APPROVED",
@@ -290,6 +290,9 @@ export function SocketProvider({
                         isLocked: false,
                       }
                     : t,
+                ),
+                participants: prev.participants.map((p) =>
+                  p.teamId === data.teamId ? { ...p, teamId: null } : p,
                 ),
               }
             : null,
