@@ -1110,6 +1110,7 @@ io.on(
         let kickedTeam = null;
         if (participant.teamId) {
           kickedTeam = room.teams.find((t) => t.id === participant.teamId);
+          console.log("[Server] Kick: participant.teamId:", participant.teamId, "kickedTeam found:", !!kickedTeam, kickedTeam?.id, kickedTeam?.teamId);
           if (kickedTeam) {
             // Reset team to UNCLAIMED
             await prisma.team.update({
@@ -1139,10 +1140,12 @@ io.on(
             setRoomCache(roomId, room);
 
             // Notify room that team is available again
+            console.log("[Server] Emitting team:released for team:", kickedTeam.id);
             io.to(`room:${roomId}`).emit("team:released", {
               teamId: kickedTeam.id,
               teamShortName: kickedTeam.teamId,
             });
+            console.log("[Server] team:released emitted successfully");
           }
         }
 
@@ -1188,11 +1191,15 @@ io.on(
 
           if (participant) {
             // Just disconnected - mark offline but keep in room
-            await prisma.participant.update({
-              where: { id: userId },
-              data: { isOnline: false, lastSeenAt: new Date() },
-            });
-            participant.isOnline = false;
+            try {
+              await prisma.participant.update({
+                where: { id: userId },
+                data: { isOnline: false, lastSeenAt: new Date() },
+              });
+              participant.isOnline = false;
+            } catch (error) {
+              console.log("[Server] Participant not found in DB (likely kicked), skipping offline update");
+            }
           }
 
           // Only transfer host if the host was KICKED (deleted from room)
@@ -1215,10 +1222,14 @@ io.on(
               const oldHost = room.participants.find((p) => p.id === userId);
               if (oldHost) {
                 oldHost.isHost = false;
-                await prisma.participant.update({
-                  where: { id: oldHost.id },
-                  data: { isHost: false },
-                });
+                try {
+                  await prisma.participant.update({
+                    where: { id: oldHost.id },
+                    data: { isHost: false },
+                  });
+                } catch (error) {
+                  console.log("[Server] Old host not found in DB, skipping isHost update");
+                }
               }
 
               await prisma.room.update({

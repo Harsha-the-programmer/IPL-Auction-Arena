@@ -272,6 +272,7 @@ export function SocketProvider({
     newSocket.on(
       "team:released",
       (data: { teamId: string; teamShortName: string }) => {
+        console.log("[Client] team:released received:", data);
         setRoom((prev) =>
           prev
             ? {
