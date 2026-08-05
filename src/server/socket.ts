@@ -618,6 +618,13 @@ io.on(
 
         setRoomCache(roomId, room);
 
+        // Also update the participant's teamId in the cache
+        const approvedParticipant = room.participants.find((p) => p.id === participantId);
+        if (approvedParticipant) {
+          approvedParticipant.teamId = team.id;
+          setRoomCache(roomId, room);
+        }
+
         // Notify all
         console.log("[Server] Emitting team:claimed:", { teamId, userId: targetSocketId, displayName: team.ownerName || "Unknown" });
         const participantForClaim = room.participants.find((p) => p.socketId === targetSocketId);
