@@ -1197,8 +1197,12 @@ io.on(
                 data: { isOnline: false, lastSeenAt: new Date() },
               });
               participant.isOnline = false;
-            } catch (error) {
-              console.log("[Server] Participant not found in DB (likely kicked), skipping offline update");
+            } catch (error: any) {
+              if (error.code === 'P2025') {
+                console.log("[Server] Participant not found in DB (likely kicked), skipping offline update");
+              } else {
+                console.error("[Server] Error updating participant offline:", error);
+              }
             }
           }
 
@@ -1256,8 +1260,12 @@ io.on(
                 where: { id: userId },
                 data: { isOnline: false, lastSeenAt: new Date() },
               });
-            } catch (error) {
-              console.log("[Server] Participant not found in DB, skipping offline update");
+            } catch (error: any) {
+              if (error.code === 'P2025') {
+                console.log("[Server] Participant not found in DB, skipping offline update");
+              } else {
+                console.error("[Server] Error updating participant offline:", error);
+              }
             }
 
             // Notify others this user went offline (but still in room)
