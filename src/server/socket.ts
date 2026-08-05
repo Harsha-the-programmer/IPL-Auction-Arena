@@ -1251,10 +1251,14 @@ io.on(
             }
           } else if (participant) {
             // Just mark offline in DB
-            await prisma.participant.update({
-              where: { id: userId },
-              data: { isOnline: false, lastSeenAt: new Date() },
-            });
+            try {
+              await prisma.participant.update({
+                where: { id: userId },
+                data: { isOnline: false, lastSeenAt: new Date() },
+              });
+            } catch (error) {
+              console.log("[Server] Participant not found in DB, skipping offline update");
+            }
 
             // Notify others this user went offline (but still in room)
             socket.to(`room:${roomId}`).emit("user:offline", {
