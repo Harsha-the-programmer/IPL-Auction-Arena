@@ -127,7 +127,16 @@ export function SocketProvider({
       setMySocketId(newSocket.id ?? "");
       setIsLoading(false);
       setIsHost(state.hostSocketId === newSocket.id);
-      const team = state.teams.find((t) => t.ownerSocketId === newSocket.id);
+      
+      // Find my team by participant's teamId (stable across refreshes) or ownerSocketId
+      const myParticipant = state.participants.find((p) => p.socketId === newSocket.id);
+      let team = null;
+      if (myParticipant?.teamId) {
+        team = state.teams.find((t) => t.id === myParticipant.teamId);
+      }
+      if (!team) {
+        team = state.teams.find((t) => t.ownerSocketId === newSocket.id);
+      }
       if (team) setMyTeam(team);
     });
 
