@@ -383,7 +383,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                   )}
                 </div>
                 <div className={cn("w-2 h-2 rounded-full", p.isOnline ? "bg-green-500" : "bg-neutral-600")} />
-                {isHost && p.socketId !== mySocketId && !p.isHost && p.isOnline && (
+                {isHost && p.socketId !== mySocketId && !p.isHost && (
                   <button
                     onClick={() => kickPlayer(p.socketId)}
                     className="btn-ghost text-xs text-red-400 hover:bg-red-500/10 px-2 py-1"
