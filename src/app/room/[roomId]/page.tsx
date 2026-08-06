@@ -82,6 +82,18 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     (p) => (clientId && p.clientId === clientId) || p.socketId === mySocketId
   ) ?? false;
 
+  // Show loading state while room is loading
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-10 h-10 text-amber-500 animate-spin mx-auto mb-4" />
+          <p className="text-neutral-400">Loading room...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Handle name submission
   const handleNameSubmit = () => {
     if (displayName.trim().length >= 2) {

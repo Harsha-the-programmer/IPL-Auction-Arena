@@ -92,6 +92,7 @@ export function SocketProvider({
       "roomId:",
       currentRoomId,
     );
+    setIsLoading(true);
     const newSocket = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
       reconnection: true,
