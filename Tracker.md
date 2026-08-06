@@ -34,6 +34,11 @@
 | **4.1** | Results page + Podium              | ✅ Done        | 2026-07-16 | 2026-07-18 | /room/[roomId]/results with confetti         |
 | **4.1** | Share (WhatsApp, Copy, Screenshot) | ✅ Done        | 2026-07-16 | 2026-07-18 | Share buttons on results page                |
 | **4.2** | Reconnection + Edge cases          | ✅ Done        | 2026-07-16 | 2026-07-18 | Host transfer, spectator mode                |
+| **4.2** | Team release on kick               | ✅ Done        | 2026-08-06 | 2026-08-06 | Host can kick player, team released to pool  |
+| **4.2** | Kick offline players               | ✅ Done        | 2026-08-06 | 2026-08-06 | Host can kick offline/online players         |
+| **4.2** | Select lineup on all devices       | ✅ Done        | 2026-08-06 | 2026-08-06 | Fixed UUID-based ownership check             |
+| **4.2** | Multiple team prevention           | ✅ Done        | 2026-08-06 | 2026-08-06 | UUID-based ownership prevents duplicates     |
+| **4.2** | Persistent reconnect logic         | ✅ Done        | 2026-08-06 | 2026-08-06 | UUID-based reconnect, no name re-entry       |
 | **4.3** | Mobile optimization                | 🟨 In Progress | 2026-07-18 |            |                                              |
 | **4.4** | Landing + Userscript page          | ✅ Done        | 2026-07-16 | 2026-07-18 | / and /install pages                         |
 | **4.5** | Deploy config + Monitoring         | 🟨 In Progress | 2026-07-18 |            |                                              |
@@ -86,6 +91,13 @@ Next: [Task ID]
 ```
 
 ### Standup History
+
+#### 2026-08-06
+
+- Completed: All core features complete - Lobby, Team Claim, Lineup, Match, Results, Userscript, API. Fixed team release on kick, fixed select lineup button on all devices, fixed multiple team selection, fixed player visibility across devices, fixed offline player kick, fixed reconnection logic with UUID-based participant ID, fixed disconnect handler P2025 errors. All TypeScript/build/lint checks passing. Build successful.
+- In Progress: Phase 4 - Mobile optimization, Deploy config, Production monitoring
+- Blockers: Need Grok API key for AI ranking, need Railway/Neon credentials for production deploy
+- Next: Deploy to Vercel + Railway, add Grok API key, test with live auction game
 
 #### 2026-07-19
 
