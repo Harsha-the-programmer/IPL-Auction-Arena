@@ -66,14 +66,24 @@ export default function LineupPage() {
     }
   }, [contextMyTeam])
 
+  // Find team by participant's teamId (more reliable than socketId which changes on refresh)
   useEffect(() => {
-    if (room) {
-      const team = room.teams.find(t => t.ownerSocketId === mySocketId)
-      if (team) {
-        setMyTeam(team)
+    if (room && !myTeam) {
+      // First try to find by participant's teamId (stable across refreshes)
+      const myParticipant = room.participants.find(p => p.socketId === mySocketId)
+      if (myParticipant?.teamId) {
+        const team = room.teams.find(t => t.id === myParticipant.teamId)
+        if (team) {
+          setMyTeam(team)
+        }
+      }
+      // Fallback: try by ownerSocketId (for initial join before reconnect)
+      if (!myTeam) {
+        const team = room.teams.find(t => t.ownerSocketId === mySocketId)
+        if (team) setMyTeam(team)
       }
     }
-  }, [room, mySocketId])
+  }, [room, mySocketId, myTeam])
 
   // Handle drag end
   const handleDragEnd = useCallback((event: DragEndEvent) => {
