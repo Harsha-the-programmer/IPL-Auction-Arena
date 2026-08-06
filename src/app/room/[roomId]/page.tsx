@@ -247,10 +247,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                     {team.shortName}
                   </div>
                   <span className="font-medium">{team.requestedByName} wants {team.name}</span>
-                  <button onClick={() => socket?.emit("team:approve", { teamId: team.teamId, socketId: team.requestedBySocketId! })} className="btn-primary text-xs px-3 py-1">
+                  <button onClick={() => socket?.emit("team:approve", { teamId: team.teamId, participantId: team.requestedByUserId! })} className="btn-primary text-xs px-3 py-1">
                     <CheckCircle className="w-3 h-3" /> Approve
                   </button>
-                  <button onClick={() => socket?.emit("team:reject", { teamId: team.teamId, socketId: team.requestedBySocketId! })} className="btn-danger text-xs px-3 py-1">
+                  <button onClick={() => socket?.emit("team:reject", { teamId: team.teamId, participantId: team.requestedByUserId! })} className="btn-danger text-xs px-3 py-1">
                     <XCircle className="w-3 h-3" /> Reject
                   </button>
                 </div>
