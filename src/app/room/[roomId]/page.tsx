@@ -59,7 +59,6 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
   const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [hasSubmittedName, setHasSubmittedName] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   // Derive isHost from current participant's isHost property (persists across refresh)
@@ -78,31 +77,15 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     return "";
   });
 
-  // Auto-submit name if we already have a participant in this room with our clientId OR socketId
-  useEffect(() => {
-    if (room && !hasSubmittedName) {
-      // Check by clientId (for reconnection) OR by socketId (for immediate reconnect)
-      const existingParticipant = room.participants.find(
-        (p) => (clientId && p.clientId === clientId) || p.socketId === mySocketId
-      );
-      if (existingParticipant) {
-        // We already have a participant in this room, auto-join
-        joinRoom(roomId, existingParticipant.displayName, clientId);
-        setHasSubmittedName(true);
-        if (pendingTeamId) {
-          socket?.emit("team:request", { teamId: pendingTeamId });
-          setPendingTeamId(null);
-        }
-      }
-    }
-  }, [room, clientId, hasSubmittedName, roomId, pendingTeamId, joinRoom, socket, mySocketId]);
+  // Derive whether user has already joined this room (checks both clientId and socketId)
+  const hasJoined = room?.participants.some(
+    (p) => (clientId && p.clientId === clientId) || p.socketId === mySocketId
+  ) ?? false;
 
   // Handle name submission
   const handleNameSubmit = () => {
     if (displayName.trim().length >= 2) {
-      // Join the room with the entered name and clientId
       joinRoom(roomId, displayName, clientId);
-      setHasSubmittedName(true);
       if (pendingTeamId) {
         socket?.emit("team:request", { teamId: pendingTeamId });
         setPendingTeamId(null);
@@ -125,7 +108,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
   // Request team
   const requestTeam = (teamId: string) => {
-    if (!hasSubmittedName) {
+    if (!hasJoined) {
       // The name form will be shown instead of this logic now
       return;
     }
@@ -133,7 +116,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   };
 
   // Show name entry form if user hasn't submitted name yet
-  if (!hasSubmittedName) {
+  if (!hasJoined) {
     return (
       <div className="min-h-screen bg-neutral-950 flex flex-col">
         <header className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur sticky top-0 z-40">
