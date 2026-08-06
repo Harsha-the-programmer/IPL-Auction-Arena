@@ -78,11 +78,12 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     return "";
   });
 
-  // Auto-submit name if we already have a participant in this room with our clientId
+  // Auto-submit name if we already have a participant in this room with our clientId OR socketId
   useEffect(() => {
-    if (room && clientId && !hasSubmittedName) {
+    if (room && !hasSubmittedName) {
+      // Check by clientId (for reconnection) OR by socketId (for immediate reconnect)
       const existingParticipant = room.participants.find(
-        (p) => p.clientId === clientId && p.isOnline
+        (p) => (clientId && p.clientId === clientId) || p.socketId === mySocketId
       );
       if (existingParticipant) {
         // We already have a participant in this room, auto-join
@@ -94,7 +95,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
         }
       }
     }
-  }, [room, clientId, hasSubmittedName, roomId, pendingTeamId, joinRoom, socket]);
+  }, [room, clientId, hasSubmittedName, roomId, pendingTeamId, joinRoom, socket, mySocketId]);
 
   // Handle name submission
   const handleNameSubmit = () => {
