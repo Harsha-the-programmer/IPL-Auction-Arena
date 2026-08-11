@@ -110,42 +110,45 @@ RESULTS (Round 10 complete)
 - **Lobby**: Socket.io room = `room:{roomId}`
 - **Lineup**: Broadcast `lineup:synced` on every drag-drop (debounced 300ms)
 - **Match**: Single Socket.io room, host controls pace via `round:start` emission
-- **Reconnection**: Client requests `room:state` on reconnect, full sync
+- **Reconnection**: Client resumes by saved `clientId` on refresh, then receives full `room:state`
 - **Late Join**: If match started, spectator mode (view only, no lineup)
 
 ## Socket.io Events
 
 ### Client → Server
+
 ```typescript
 // Lobby
-"room:join"           // { roomId, displayName }
-"team:request"        // { teamId }
-"team:approve"        // { teamId, socketId }
-"team:reject"         // { teamId, socketId }
-"lineup:update"       // { lineupSlots: LineupSlot[] }
-"lineup:lock"         // { position }
-"match:start"         // {}
+"room:join"; // { roomId, displayName, clientId?, resumeOnly? }
+"team:request"; // { teamId }
+"team:approve"; // { teamId, socketId }
+"team:reject"; // { teamId, socketId }
+"lineup:update"; // { lineupSlots: LineupSlot[] }
+"lineup:lock"; // { position }
+"match:start"; // {}
 
 // Match
-"round:ready"         // {}
+"round:ready"; // {}
 ```
 
 ### Server → Client
+
 ```typescript
 // Lobby
-"room:state"          // Full room state
-"user:joined"         // { userId, displayName, teamId? }
-"user:left"           // { userId }
-"team:claimed"        // { teamId, userId, displayName }
-"team:requested"      // { teamId, userId, displayName }
-"lineup:synced"       // { teamId, lineupSlots, lockedPositions }
-"pending:update"      // { waitingFor: string[] }
+"room:state"; // Full room state
+"room:resume:failed"; // Saved clientId has no participant in this room; show name form
+"user:joined"; // { userId, displayName, teamId? }
+"user:left"; // { userId }
+"team:claimed"; // { teamId, userId, displayName }
+"team:requested"; // { teamId, userId, displayName }
+"lineup:synced"; // { teamId, lineupSlots, lockedPositions }
+"pending:update"; // { waitingFor: string[] }
 
 // Match
-"round:start"         // { roundNumber, position, countdown: 3 }
-"round:reveal"        // { picks: Pick[] }
-"round:ranking"       // { ranking: AIRanking[], points: Score[] }
-"round:complete"      // { leaderboard: TeamScore[] }
-"match:complete"      // { finalStandings, winner }
-"error"               // { message }
+"round:start"; // { roundNumber, position, countdown: 3 }
+"round:reveal"; // { picks: Pick[] }
+"round:ranking"; // { ranking: AIRanking[], points: Score[] }
+"round:complete"; // { leaderboard: TeamScore[] }
+"match:complete"; // { finalStandings, winner }
+"error"; // { message }
 ```

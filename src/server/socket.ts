@@ -344,165 +344,189 @@ io.on(
   ) => {
     console.log(`[Socket] Connected: ${socket.id}`);
 
-    socket.on("room:join", async ({ roomId, displayName, clientId }) => {
-      try {
-        // Load room from DB if not cached
-        let room: RoomState | null = getRoomCache(roomId);
-        if (!room) {
-          room = await loadRoomFromDB(roomId);
+    socket.on(
+      "room:join",
+      async ({ roomId, displayName, clientId, resumeOnly }) => {
+        try {
+          // Load room from DB if not cached
+          let room: RoomState | null = getRoomCache(roomId);
           if (!room) {
-            socket.emit("error", "Room not found");
-            return;
-          }
-          setRoomCache(roomId, room);
-        }
-
-        // Use the actual room UUID for database operations
-        const actualRoomId = room.id;
-
-        // Check if user already in room by clientId FIRST (most reliable for reconnection)
-        // Don't check isOnline here - we want to reconnect even if they were marked offline
-        let participant = null;
-        if (clientId) {
-          participant = room.participants.find(
-            (p) => p.clientId === clientId,
-          );
-        }
-
-        // Check if user already in room by socketId (exact reconnection)
-        if (!participant) {
-          participant = room.participants.find(
-            (p) => p.socketId === socket.id,
-          );
-        }
-
-        // If not found by socketId, check by displayName (reconnection from new tab/browser)
-        if (!participant) {
-          participant = room.participants.find(
-            (p) => p.displayName === displayName && p.isOnline,
-          );
-        }
-
-        const isNewParticipant = !participant;
-
-        if (isNewParticipant) {
-          // Check if first participant -> host
-          const isHost = room.participants.length === 0;
-
-          // Create participant in DB
-          const newParticipant = await prisma.participant.create({
-            data: {
-              roomId: actualRoomId,
-              socketId: socket.id,
-              displayName,
-              isHost,
-              isOnline: true,
-              clientId: clientId || null,
-            },
-          });
-          participant = {
-            ...newParticipant,
-            joinedAt: typeof newParticipant.joinedAt === "string" ? newParticipant.joinedAt : newParticipant.joinedAt.toISOString(),
-            lastSeenAt: typeof newParticipant.lastSeenAt === "string" ? newParticipant.lastSeenAt : newParticipant.lastSeenAt.toISOString(),
-          };
-
-          // If first participant, set as host
-          if (isHost) {
-            await prisma.room.update({
-              where: { id: actualRoomId },
-              data: { hostSocketId: socket.id },
-            });
-            room.hostSocketId = socket.id;
-          }
-
-          room.participants.push(mapParticipantToState(participant));
-          setRoomCache(roomId, room);
-          // Also cache by UUID for lookups using socket.data.roomId
-          setRoomCache(actualRoomId, room);
-        } else {
-          // Reconnection or returning user - update socketId and online status
-          if (!participant) {
-            socket.emit("error", "Participant not found");
-            return;
-          }
-          // Update clientId if provided and not already set
-          const existingParticipant = participant;
-          const existingParticipantId = existingParticipant.id;
-          await prisma.participant.update({
-            where: { id: existingParticipant.id },
-            data: {
-              socketId: socket.id,
-              isOnline: true,
-              lastSeenAt: new Date(),
-              ...(clientId && !existingParticipant.clientId ? { clientId } : {}),
-            },
-          });
-          existingParticipant.socketId = socket.id;
-          existingParticipant.isOnline = true;
-          if (clientId && !existingParticipant.clientId) {
-            existingParticipant.clientId = clientId;
-          }
-          // If this participant is the host, update room's hostSocketId
-          if (existingParticipant.isHost) {
-            await prisma.room.update({
-              where: { id: actualRoomId },
-              data: { hostSocketId: socket.id },
-            });
-            room.hostSocketId = socket.id;
-          }
-          // If this participant owns a team, update team's ownerSocketId
-          if (existingParticipant.teamId) {
-            const team = room.teams.find((t) => t.id === existingParticipant.teamId);
-            if (team) {
-              await prisma.team.update({
-                where: { id: team.id },
-                data: { ownerSocketId: socket.id },
-              });
-              team.ownerSocketId = socket.id;
+            room = await loadRoomFromDB(roomId);
+            if (!room) {
+              socket.emit("error", "Room not found");
+              return;
             }
+            setRoomCache(roomId, room);
           }
-          setRoomCache(roomId, room);
-          // Also cache by UUID for lookups using socket.data.roomId
-          setRoomCache(actualRoomId, room);
-          participant = existingParticipant;
+
+          // Use the actual room UUID for database operations
+          const actualRoomId = room.id;
+
+          // Check if user already in room by clientId FIRST (most reliable for reconnection)
+          // Don't check isOnline here - we want to reconnect even if they were marked offline
+          let participant = null;
+          if (clientId) {
+            participant = room.participants.find(
+              (p) => p.clientId === clientId,
+            );
+          }
+
+          // Check if user already in room by socketId (exact reconnection)
+          if (!participant && !resumeOnly) {
+            participant = room.participants.find(
+              (p) => p.socketId === socket.id,
+            );
+          }
+
+          // If not found by socketId, check by displayName (reconnection from new tab/browser)
+          if (!participant && !resumeOnly) {
+            participant = room.participants.find(
+              (p) => p.displayName === displayName && p.isOnline,
+            );
+          }
+
+          if (!participant && resumeOnly) {
+            socket.emit("room:resume:failed");
+            return;
+          }
+
+          const isNewParticipant = !participant;
+
+          if (isNewParticipant) {
+            // Check if first participant -> host
+            const isHost = room.participants.length === 0;
+
+            // Create participant in DB
+            const newParticipant = await prisma.participant.create({
+              data: {
+                roomId: actualRoomId,
+                socketId: socket.id,
+                displayName,
+                isHost,
+                isOnline: true,
+                clientId: clientId || null,
+              },
+            });
+            participant = {
+              ...newParticipant,
+              joinedAt:
+                typeof newParticipant.joinedAt === "string"
+                  ? newParticipant.joinedAt
+                  : newParticipant.joinedAt.toISOString(),
+              lastSeenAt:
+                typeof newParticipant.lastSeenAt === "string"
+                  ? newParticipant.lastSeenAt
+                  : newParticipant.lastSeenAt.toISOString(),
+            };
+
+            // If first participant, set as host
+            if (isHost) {
+              await prisma.room.update({
+                where: { id: actualRoomId },
+                data: { hostSocketId: socket.id },
+              });
+              room.hostSocketId = socket.id;
+            }
+
+            room.participants.push(mapParticipantToState(participant));
+            setRoomCache(roomId, room);
+            // Also cache by UUID for lookups using socket.data.roomId
+            setRoomCache(actualRoomId, room);
+          } else {
+            // Reconnection or returning user - update socketId and online status
+            if (!participant) {
+              socket.emit("error", "Participant not found");
+              return;
+            }
+            // Update clientId if provided and not already set
+            const existingParticipant = participant;
+            const existingParticipantId = existingParticipant.id;
+            await prisma.participant.update({
+              where: { id: existingParticipant.id },
+              data: {
+                socketId: socket.id,
+                isOnline: true,
+                lastSeenAt: new Date(),
+                ...(clientId && !existingParticipant.clientId
+                  ? { clientId }
+                  : {}),
+              },
+            });
+            existingParticipant.socketId = socket.id;
+            existingParticipant.isOnline = true;
+            if (clientId && !existingParticipant.clientId) {
+              existingParticipant.clientId = clientId;
+            }
+            // If this participant is the host, update room's hostSocketId
+            if (existingParticipant.isHost) {
+              await prisma.room.update({
+                where: { id: actualRoomId },
+                data: { hostSocketId: socket.id },
+              });
+              room.hostSocketId = socket.id;
+            }
+            // If this participant owns a team, update team's ownerSocketId
+            if (existingParticipant.teamId) {
+              const team = room.teams.find(
+                (t) => t.id === existingParticipant.teamId,
+              );
+              if (team) {
+                await prisma.team.update({
+                  where: { id: team.id },
+                  data: { ownerSocketId: socket.id },
+                });
+                team.ownerSocketId = socket.id;
+              }
+            }
+            setRoomCache(roomId, room);
+            // Also cache by UUID for lookups using socket.data.roomId
+            setRoomCache(actualRoomId, room);
+            participant = existingParticipant;
+          }
+
+          // Join socket room
+          socket.join(`room:${actualRoomId}`);
+          socket.data.roomId = actualRoomId;
+          socket.data.userId = participant!.id;
+          socket.data.displayName = participant!.displayName;
+          socket.data.isHost = participant!.isHost;
+
+          // Send full room state
+          socket.emit("room:state", room);
+
+          // Notify others
+          if (isNewParticipant) {
+            socket
+              .to(`room:${actualRoomId}`)
+              .emit("user:joined", mapParticipantToState(participant!));
+          } else {
+            // Reconnection - notify others this user is back online
+            socket
+              .to(`room:${actualRoomId}`)
+              .emit("user:online", mapParticipantToState(participant!));
+          }
+
+          console.log(
+            `[Socket] ${participant!.displayName} joined room ${actualRoomId} (host: ${participant!.isHost})`,
+          );
+        } catch (error) {
+          console.error("[Socket] Join error:", error);
+          socket.emit("error", "Failed to join room");
         }
-
-        // Join socket room
-        socket.join(`room:${actualRoomId}`);
-        socket.data.roomId = actualRoomId;
-        socket.data.userId = participant!.id;
-        socket.data.displayName = displayName;
-        socket.data.isHost = participant!.isHost;
-
-        // Send full room state
-        socket.emit("room:state", room);
-
-        // Notify others
-        if (isNewParticipant) {
-          socket
-            .to(`room:${actualRoomId}`)
-            .emit("user:joined", mapParticipantToState(participant!));
-        } else {
-          // Reconnection - notify others this user is back online
-          socket
-            .to(`room:${actualRoomId}`)
-            .emit("user:online", mapParticipantToState(participant!));
-        }
-
-        console.log(
-          `[Socket] ${displayName} joined room ${actualRoomId} (host: ${participant!.isHost})`,
-        );
-      } catch (error) {
-        console.error("[Socket] Join error:", error);
-        socket.emit("error", "Failed to join room");
-      }
-    });
+      },
+    );
 
     socket.on("team:request", async ({ teamId }) => {
       const roomId = socket.data.roomId;
       const userId = socket.data.userId;
       const displayName = socket.data.displayName;
-      console.log("[Server] team:request received:", { teamId, roomId, userId, displayName, socketId: socket.id });
+      console.log("[Server] team:request received:", {
+        teamId,
+        roomId,
+        userId,
+        displayName,
+        socketId: socket.id,
+      });
       if (!roomId || !userId) return;
 
       try {
@@ -537,10 +561,17 @@ io.on(
         setRoomCache(roomId, room);
 
         // Notify host
-        console.log("[Server] Emitting team:requested:", { teamId, userId, displayName: displayName || "Unknown" });
+        console.log("[Server] Emitting team:requested:", {
+          teamId,
+          userId,
+          displayName: displayName || "Unknown",
+        });
         const roomName = `room:${roomId}`;
         console.log("[Server] Room name:", roomName);
-        console.log("[Server] Sockets in room:", io.sockets.adapter.rooms.get(roomName)?.size || 0);
+        console.log(
+          "[Server] Sockets in room:",
+          io.sockets.adapter.rooms.get(roomName)?.size || 0,
+        );
         io.to(roomName).emit("team:requested", {
           teamId,
           userId,
@@ -568,7 +599,9 @@ io.on(
         if (team.requestedByUserId !== participantId) return;
 
         // Find the participant to get their current socketId
-        const participant = room.participants.find((p) => p.id === participantId);
+        const participant = room.participants.find(
+          (p) => p.id === participantId,
+        );
         if (!participant) return;
         const targetSocketId = participant.socketId;
 
@@ -619,15 +652,23 @@ io.on(
         setRoomCache(roomId, room);
 
         // Also update the participant's teamId in the cache
-        const approvedParticipant = room.participants.find((p) => p.id === participantId);
+        const approvedParticipant = room.participants.find(
+          (p) => p.id === participantId,
+        );
         if (approvedParticipant) {
           approvedParticipant.teamId = team.id;
           setRoomCache(roomId, room);
         }
 
         // Notify all
-        console.log("[Server] Emitting team:claimed:", { teamId, userId: targetSocketId, displayName: team.ownerName || "Unknown" });
-        const participantForClaim = room.participants.find((p) => p.socketId === targetSocketId);
+        console.log("[Server] Emitting team:claimed:", {
+          teamId,
+          userId: targetSocketId,
+          displayName: team.ownerName || "Unknown",
+        });
+        const participantForClaim = room.participants.find(
+          (p) => p.socketId === targetSocketId,
+        );
         io.to(`room:${roomId}`).emit("team:claimed", {
           teamId: team.id,
           userId: participantForClaim?.id ?? participantId,
@@ -677,9 +718,14 @@ io.on(
           teamId,
           userId: participantId,
         });
-        console.log("[Server] Emitting team:rejected:", { teamId, userId: participantId });
+        console.log("[Server] Emitting team:rejected:", {
+          teamId,
+          userId: participantId,
+        });
         // Notify the rejected user by finding their current socket
-        const rejectedParticipant = room.participants.find((p) => p.id === participantId);
+        const rejectedParticipant = room.participants.find(
+          (p) => p.id === participantId,
+        );
         if (rejectedParticipant) {
           io.to(rejectedParticipant.socketId).emit("room:state", room);
         }
@@ -1099,7 +1145,12 @@ io.on(
     socket.on("kickPlayer", async ({ targetSocketId }) => {
       const roomId = socket.data.roomId;
       const isHost = socket.data.isHost;
-      console.log("[Server] kickPlayer received:", { targetSocketId, roomId, isHost, socketId: socket.id });
+      console.log("[Server] kickPlayer received:", {
+        targetSocketId,
+        roomId,
+        isHost,
+        socketId: socket.id,
+      });
       if (!roomId || !isHost) return;
 
       try {
@@ -1107,7 +1158,9 @@ io.on(
         if (!room) return;
 
         // Find participant by socketId
-        const participant = room.participants.find((p) => p.socketId === targetSocketId);
+        const participant = room.participants.find(
+          (p) => p.socketId === targetSocketId,
+        );
         if (!participant) return;
 
         // Cannot kick host
@@ -1117,7 +1170,14 @@ io.on(
         let kickedTeam = null;
         if (participant.teamId) {
           kickedTeam = room.teams.find((t) => t.id === participant.teamId);
-          console.log("[Server] Kick: participant.teamId:", participant.teamId, "kickedTeam found:", !!kickedTeam, kickedTeam?.id, kickedTeam?.teamId);
+          console.log(
+            "[Server] Kick: participant.teamId:",
+            participant.teamId,
+            "kickedTeam found:",
+            !!kickedTeam,
+            kickedTeam?.id,
+            kickedTeam?.teamId,
+          );
           if (kickedTeam) {
             // Reset team to UNCLAIMED
             await prisma.team.update({
@@ -1133,7 +1193,9 @@ io.on(
             });
 
             // Delete the lineup
-            await prisma.lineup.deleteMany({ where: { teamId: kickedTeam.id } });
+            await prisma.lineup.deleteMany({
+              where: { teamId: kickedTeam.id },
+            });
 
             // Update cache
             kickedTeam.claimStatus = "UNCLAIMED";
@@ -1147,7 +1209,10 @@ io.on(
             setRoomCache(roomId, room);
 
             // Notify room that team is available again
-            console.log("[Server] Emitting team:released for team:", kickedTeam.id);
+            console.log(
+              "[Server] Emitting team:released for team:",
+              kickedTeam.id,
+            );
             io.to(`room:${roomId}`).emit("team:released", {
               teamId: kickedTeam.id,
               teamShortName: kickedTeam.teamId,
@@ -1162,14 +1227,19 @@ io.on(
         });
 
         // Notify the kicked user
-        io.to(targetSocketId).emit("error", "You have been kicked from the room by the host");
+        io.to(targetSocketId).emit(
+          "error",
+          "You have been kicked from the room by the host",
+        );
         io.to(targetSocketId).emit("user:left", targetSocketId);
 
         // Force disconnect the kicked socket
         io.to(targetSocketId).disconnectSockets(true);
 
         // Remove from room cache
-        room.participants = room.participants.filter((p) => p.id !== participant.id);
+        room.participants = room.participants.filter(
+          (p) => p.id !== participant.id,
+        );
         setRoomCache(roomId, room);
 
         // Notify room
@@ -1192,7 +1262,7 @@ io.on(
         const room = getRoomCache(roomId);
         if (room) {
           const participant = room.participants.find((p) => p.id === userId);
-          
+
           // Check if participant was kicked (deleted from room cache)
           const wasKicked = !participant;
 
@@ -1205,10 +1275,15 @@ io.on(
               });
               participant.isOnline = false;
             } catch (error: any) {
-              if (error.code === 'P2025') {
-                console.log("[Server] Participant not found in DB (likely kicked), skipping offline update");
+              if (error.code === "P2025") {
+                console.log(
+                  "[Server] Participant not found in DB (likely kicked), skipping offline update",
+                );
               } else {
-                console.error("[Server] Error updating participant offline:", error);
+                console.error(
+                  "[Server] Error updating participant offline:",
+                  error,
+                );
               }
             }
           }
@@ -1239,7 +1314,9 @@ io.on(
                     data: { isHost: false },
                   });
                 } catch (error) {
-                  console.log("[Server] Old host not found in DB, skipping isHost update");
+                  console.log(
+                    "[Server] Old host not found in DB, skipping isHost update",
+                  );
                 }
               }
 
@@ -1268,10 +1345,15 @@ io.on(
                 data: { isOnline: false, lastSeenAt: new Date() },
               });
             } catch (error: any) {
-              if (error.code === 'P2025') {
-                console.log("[Server] Participant not found in DB, skipping offline update");
+              if (error.code === "P2025") {
+                console.log(
+                  "[Server] Participant not found in DB, skipping offline update",
+                );
               } else {
-                console.error("[Server] Error updating participant offline:", error);
+                console.error(
+                  "[Server] Error updating participant offline:",
+                  error,
+                );
               }
             }
 

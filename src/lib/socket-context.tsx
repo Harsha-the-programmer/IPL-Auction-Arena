@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import { io, Socket } from "socket.io-client";
@@ -21,6 +22,44 @@ import type {
 } from "@/lib/types";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+const CLIENT_ID_STORAGE_KEY = "ipl-auction-client-id";
+const DISPLAY_NAME_STORAGE_KEY = "ipl-auction-display-name";
+
+function getRoomDisplayNameKey(roomId: string) {
+  return `${DISPLAY_NAME_STORAGE_KEY}:${roomId}`;
+}
+
+function getOrCreateClientId() {
+  if (typeof window === "undefined") return null;
+
+  let clientId = localStorage.getItem(CLIENT_ID_STORAGE_KEY);
+  if (!clientId) {
+    clientId = crypto.randomUUID();
+    localStorage.setItem(CLIENT_ID_STORAGE_KEY, clientId);
+  }
+
+  return clientId;
+}
+
+function getSavedDisplayName(roomId?: string | null) {
+  if (typeof window === "undefined") return null;
+
+  if (roomId) {
+    const roomName = localStorage.getItem(getRoomDisplayNameKey(roomId));
+    if (roomName) return roomName;
+  }
+
+  return localStorage.getItem(DISPLAY_NAME_STORAGE_KEY);
+}
+
+function saveDisplayName(displayName: string, roomId?: string | null) {
+  if (typeof window === "undefined" || !displayName) return;
+
+  localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName);
+  if (roomId) {
+    localStorage.setItem(getRoomDisplayNameKey(roomId), displayName);
+  }
+}
 
 interface SocketContextType {
   socket: Socket | null;
@@ -38,7 +77,9 @@ interface SocketContextType {
   approveTeam: (teamId: string, userId: string) => void;
   rejectTeam: (teamId: string, userId: string) => void;
   startMatch: () => void;
-  updateLineup: (lineupSlots: { position: number; playerId: string | null }[]) => void;
+  updateLineup: (
+    lineupSlots: { position: number; playerId: string | null }[],
+  ) => void;
   lockPosition: (position: number) => void;
   kickPlayer: (targetSocketId: string) => void;
 }
@@ -60,24 +101,37 @@ export function SocketProvider({
   const [displayName, setDisplayName] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
+  const [currentRoomId, setCurrentRoomId] = useState<string | null>(
+    initialRoomId ?? null,
+  );
+  const pendingJoinRef = useRef<{
+    roomId: string;
+    displayName: string;
+    clientId?: string;
+  } | null>(null);
 
   // Load persisted displayName on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const savedName = localStorage.getItem("ipl-auction-display-name");
+      const savedName = getSavedDisplayName(initialRoomId);
       if (savedName) {
         setDisplayName(savedName);
       }
     }
-  }, []);
+  }, [initialRoomId]);
 
   // Persist displayName when it changes
   useEffect(() => {
     if (displayName && typeof window !== "undefined") {
-      localStorage.setItem("ipl-auction-display-name", displayName);
+      saveDisplayName(displayName);
     }
   }, [displayName]);
+
+  useEffect(() => {
+    if (initialRoomId && initialRoomId !== currentRoomId) {
+      setCurrentRoomId(initialRoomId);
+    }
+  }, [initialRoomId, currentRoomId]);
 
   // Connect socket when currentRoomId changes
   useEffect(() => {
@@ -102,14 +156,30 @@ export function SocketProvider({
 
     newSocket.on("connect", () => {
       console.log("[Socket] Connected:", newSocket.id);
-      // Always try to join if we have a roomId and a name (from state or localStorage)
-      const savedName = displayName || (typeof window !== "undefined" ? localStorage.getItem("ipl-auction-display-name") : null);
-      const clientId = typeof window !== "undefined" ? localStorage.getItem("ipl-auction-client-id") : null;
-      if (currentRoomId && savedName) {
-        console.log("[Socket] Auto-joining room:", currentRoomId, "displayName:", savedName);
-        newSocket.emit("room:join", { roomId: currentRoomId, displayName: savedName, clientId });
-      } else if (currentRoomId && !savedName) {
-        console.log("[Socket] Connected but no displayName yet, waiting for user input");
+      const clientId = getOrCreateClientId();
+      const pendingJoin = pendingJoinRef.current;
+
+      if (pendingJoin && pendingJoin.roomId === currentRoomId) {
+        console.log(
+          "[Socket] Joining room from pending user input:",
+          currentRoomId,
+        );
+        newSocket.emit("room:join", pendingJoin);
+        pendingJoinRef.current = null;
+        return;
+      }
+
+      if (currentRoomId && clientId) {
+        const savedName = getSavedDisplayName(currentRoomId) ?? "";
+        console.log("[Socket] Attempting room resume:", currentRoomId);
+        newSocket.emit("room:join", {
+          roomId: currentRoomId,
+          displayName: savedName,
+          clientId,
+          resumeOnly: true,
+        });
+      } else {
+        setIsLoading(false);
       }
     });
 
@@ -128,9 +198,16 @@ export function SocketProvider({
       setMySocketId(newSocket.id ?? "");
       setIsLoading(false);
       setIsHost(state.hostSocketId === newSocket.id);
-      
+
       // Find my team by participant's teamId (stable across refreshes) or ownerSocketId
-      const myParticipant = state.participants.find((p) => p.socketId === newSocket.id);
+      const myParticipant = state.participants.find(
+        (p) => p.socketId === newSocket.id,
+      );
+      if (myParticipant) {
+        setDisplayName(myParticipant.displayName);
+        saveDisplayName(myParticipant.displayName, currentRoomId);
+        saveDisplayName(myParticipant.displayName, state.auctionRoomId);
+      }
       let team = null;
       if (myParticipant?.teamId) {
         team = state.teams.find((t) => t.id === myParticipant.teamId);
@@ -139,6 +216,15 @@ export function SocketProvider({
         team = state.teams.find((t) => t.ownerSocketId === newSocket.id);
       }
       if (team) setMyTeam(team);
+    });
+
+    newSocket.on("room:resume:failed", () => {
+      console.log("[Socket] No existing participant found for this browser");
+      setRoom(null);
+      setMyTeam(null);
+      setMySocketId(newSocket.id ?? "");
+      setIsHost(false);
+      setIsLoading(false);
     });
 
     newSocket.on("user:joined", (user: ParticipantState) => {
@@ -160,18 +246,23 @@ export function SocketProvider({
       );
     });
 
-    newSocket.on("user:offline", (data: { participantId: string; socketId: string }) => {
-      setRoom((prev) =>
-        prev
-          ? {
-              ...prev,
-              participants: prev.participants.map((p) =>
-                p.id === data.participantId ? { ...p, isOnline: false, socketId: data.socketId } : p,
-              ),
-            }
-          : null,
-      );
-    });
+    newSocket.on(
+      "user:offline",
+      (data: { participantId: string; socketId: string }) => {
+        setRoom((prev) =>
+          prev
+            ? {
+                ...prev,
+                participants: prev.participants.map((p) =>
+                  p.id === data.participantId
+                    ? { ...p, isOnline: false, socketId: data.socketId }
+                    : p,
+                ),
+              }
+            : null,
+        );
+      },
+    );
 
     newSocket.on("user:online", (user: ParticipantState) => {
       setRoom((prev) =>
@@ -206,7 +297,12 @@ export function SocketProvider({
 
     newSocket.on(
       "team:claimed",
-      (data: { teamId: string; userId: string; displayName: string; lineup: LineupSlotState[] | null }) => {
+      (data: {
+        teamId: string;
+        userId: string;
+        displayName: string;
+        lineup: LineupSlotState[] | null;
+      }) => {
         setRoom((prev) =>
           prev
             ? {
@@ -349,7 +445,10 @@ export function SocketProvider({
       // If kicked, clear clientId and redirect to home
       if (message.includes("kicked")) {
         if (typeof window !== "undefined") {
-          localStorage.removeItem("ipl-auction-client-id");
+          localStorage.removeItem(CLIENT_ID_STORAGE_KEY);
+          if (currentRoomId) {
+            localStorage.removeItem(getRoomDisplayNameKey(currentRoomId));
+          }
           window.location.href = "/";
         }
       }
@@ -458,11 +557,21 @@ export function SocketProvider({
     displayName,
     setDisplayName,
     joinRoom: (roomId: string, displayName: string, clientId?: string) => {
-      setDisplayName(displayName ?? "");
+      const resolvedClientId = clientId || getOrCreateClientId() || undefined;
+      const resolvedDisplayName = displayName ?? "";
+
+      setDisplayName(resolvedDisplayName);
+      saveDisplayName(resolvedDisplayName, roomId);
+      pendingJoinRef.current = {
+        roomId,
+        displayName: resolvedDisplayName,
+        clientId: resolvedClientId,
+      };
       setCurrentRoomId(roomId);
       // Emit room:join with clientId for reconnection support
       if (socket?.connected) {
-        socket.emit("room:join", { roomId, displayName, clientId });
+        socket.emit("room:join", pendingJoinRef.current);
+        pendingJoinRef.current = null;
       }
       // If not connected yet, the connect handler will emit it
     },

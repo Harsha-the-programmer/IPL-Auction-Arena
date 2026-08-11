@@ -2,22 +2,22 @@
 
 ## Technology Stack
 
-| Layer | Technology | Version | Rationale |
-|-------|------------|---------|-----------|
-| **Frontend Framework** | Next.js 14 (App Router) | 14.x | SSR, RSC, great DX, Vercel native |
-| **Language** | TypeScript | 5.x | Type safety, Prisma integration |
-| **Styling** | Tailwind CSS + shadcn/ui | 3.x | Dark theme, auction-game-like aesthetic |
-| **Real-time** | Socket.io | 4.x | Simple WebSocket, rooms, broadcasting |
-| **Backend API** | Next.js API Routes + Socket.io Server | 14.x | Unified deployment (Vercel + Railway) |
-| **Database** | PostgreSQL (Neon) + Prisma ORM | 5.x | Relational, free tier, type-safe |
-| **AI Service** | Grok API (`llama-3.1-8b-instant`) | - | Free daily limits, structured JSON output |
-| **Userscript** | Tampermonkey (ESM, Vite) | - | Free distribution, cross-browser, auto-updates |
-| **Drag & Drop** | dnd-kit | 6.x | Accessible, touch-friendly, headless |
-| **Animations** | Framer Motion | 11.x | Reveal flips, countdown, confetti |
-| **Deployment (Web)** | Vercel | - | Free tier, Next.js native |
-| **Deployment (Socket.io)** | Railway / Render | - | Free tier, WebSocket support |
-| **Database Hosting** | Neon (Serverless PostgreSQL) | - | Free tier (0.5 GB), branching |
-| **Version Control** | Git + GitHub | - | `.gh_token` for auto-push |
+| Layer                      | Technology                            | Version | Rationale                                      |
+| -------------------------- | ------------------------------------- | ------- | ---------------------------------------------- |
+| **Frontend Framework**     | Next.js 14 (App Router)               | 14.x    | SSR, RSC, great DX, Vercel native              |
+| **Language**               | TypeScript                            | 5.x     | Type safety, Prisma integration                |
+| **Styling**                | Tailwind CSS + shadcn/ui              | 3.x     | Dark theme, auction-game-like aesthetic        |
+| **Real-time**              | Socket.io                             | 4.x     | Simple WebSocket, rooms, broadcasting          |
+| **Backend API**            | Next.js API Routes + Socket.io Server | 14.x    | Unified deployment (Vercel + Railway)          |
+| **Database**               | PostgreSQL (Neon) + Prisma ORM        | 5.x     | Relational, free tier, type-safe               |
+| **AI Service**             | Grok API (`llama-3.1-8b-instant`)     | -       | Free daily limits, structured JSON output      |
+| **Userscript**             | Tampermonkey (ESM, Vite)              | -       | Free distribution, cross-browser, auto-updates |
+| **Drag & Drop**            | dnd-kit                               | 6.x     | Accessible, touch-friendly, headless           |
+| **Animations**             | Framer Motion                         | 11.x    | Reveal flips, countdown, confetti              |
+| **Deployment (Web)**       | Vercel                                | -       | Free tier, Next.js native                      |
+| **Deployment (Socket.io)** | Railway / Render                      | -       | Free tier, WebSocket support                   |
+| **Database Hosting**       | Neon (Serverless PostgreSQL)          | -       | Free tier (0.5 GB), branching                  |
+| **Version Control**        | Git + GitHub                          | -       | `.gh_token` for auto-push                      |
 
 ## Architecture Overview
 
@@ -55,16 +55,16 @@
 ```typescript
 // Userscript extracts this payload:
 interface ExportPayload {
-  auctionRoomId: string;        // "9TM8LF"
-  teams: TeamData[];            // All 10 IPL teams with squads
-  players: PlayerData[];        // All players with roles, prices, overseas flag
+  auctionRoomId: string; // "9TM8LF"
+  teams: TeamData[]; // All 10 IPL teams with squads
+  players: PlayerData[]; // All players with roles, prices, overseas flag
   auctionSettings: {
     mode: "MINI_2026" | "MEGA";
     purseAmount: number;
     bidTimer: number;
   };
-  exportedAt: string;           // ISO timestamp
-  exportedBy: string;           // visitorId from localStorage
+  exportedAt: string; // ISO timestamp
+  exportedBy: string; // visitorId from localStorage
 }
 
 // POST to: https://arena.app/api/import-room
@@ -75,38 +75,41 @@ interface ExportPayload {
 ## Socket.io Events
 
 ### Client → Server
+
 ```typescript
 // Lobby
-"room:join"           // { roomId, displayName }
-"team:request"        // { teamId } - request to claim team
-"team:approve"        // { teamId, socketId } - host approves
-"team:reject"         // { teamId, socketId } - host rejects
-"lineup:update"       // { lineupSlots: LineupSlot[] } - drag-drop changes (debounced)
-"lineup:lock"         // { position } - lock current position
-"match:start"         // {} - host starts match
+"room:join"; // { roomId, displayName, clientId?, resumeOnly? }
+"team:request"; // { teamId } - request to claim team
+"team:approve"; // { teamId, socketId } - host approves
+"team:reject"; // { teamId, socketId } - host rejects
+"lineup:update"; // { lineupSlots: LineupSlot[] } - drag-drop changes (debounced)
+"lineup:lock"; // { position } - lock current position
+"match:start"; // {} - host starts match
 
 // Match
-"round:ready"         // {} - client confirms ready for next round
+"round:ready"; // {} - client confirms ready for next round
 ```
 
 ### Server → Client
+
 ```typescript
 // Lobby
-"room:state"          // Full room state (teams, players, lineups, users)
-"user:joined"         // { userId, displayName, teamId? }
-"user:left"           // { userId }
-"team:claimed"        // { teamId, userId, displayName }
-"team:requested"      // { teamId, userId, displayName } - host notification
-"lineup:synced"       // { teamId, lineupSlots, lockedPositions }
-"pending:update"      // { waitingFor: string[] } - teams not ready
+"room:state"; // Full room state (teams, players, lineups, users)
+"room:resume:failed"; // Saved clientId has no participant in this room; show name form
+"user:joined"; // { userId, displayName, teamId? }
+"user:left"; // { userId }
+"team:claimed"; // { teamId, userId, displayName }
+"team:requested"; // { teamId, userId, displayName } - host notification
+"lineup:synced"; // { teamId, lineupSlots, lockedPositions }
+"pending:update"; // { waitingFor: string[] } - teams not ready
 
 // Match
-"round:start"         // { roundNumber, position, countdown: 3 }
-"round:reveal"        // { picks: Pick[] } - all teams' picks for this position
-"round:ranking"       // { ranking: AIRanking[], points: Score[] }
-"round:complete"      // { leaderboard: TeamScore[] }
-"match:complete"      // { finalStandings, winner }
-"error"               // { message }
+"round:start"; // { roundNumber, position, countdown: 3 }
+"round:reveal"; // { picks: Pick[] } - all teams' picks for this position
+"round:ranking"; // { ranking: AIRanking[], points: Score[] }
+"round:complete"; // { leaderboard: TeamScore[] }
+"match:complete"; // { finalStandings, winner }
+"error"; // { message }
 ```
 
 ## AI Prompt Specification (Grok)
@@ -118,7 +121,7 @@ Rank these cricket players for batting position ${position} in a T20 match.
 Return JSON array sorted best to worst.
 
 Players:
-${players.map(p => `- ${p.name} (${p.role}, ${p.team}, ₹${p.price}Cr, ${p.isOverseas ? 'Overseas' : 'Local'})`).join('\n')}
+${players.map((p) => `- ${p.name} (${p.role}, ${p.team}, ₹${p.price}Cr, ${p.isOverseas ? "Overseas" : "Local"})`).join("\n")}
 
 Output format:
 [
@@ -131,7 +134,7 @@ Output format:
 interface AIRanking {
   playerId: string;
   teamId: string;
-  rank: number;        // 1 = best
+  rank: number; // 1 = best
   reasoning: string;
 }
 
@@ -202,6 +205,7 @@ VITE_API_URL="https://arena.app/api"
 ## Markdown Files Management (Project Rules)
 
 All 8 markdown files in project root are **living documents**:
+
 - `Product-requirement-document.md` - Update when scope changes
 - `Tech-specifications.md` - Update when tech decisions change
 - `Appflow.md` - Update when user flows change

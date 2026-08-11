@@ -1,11 +1,13 @@
-'use client'
+"use client";
 
-import { SocketProvider } from '@/lib/socket-context'
+import { SocketProvider } from "@/lib/socket-context";
 
 export default function RoomLayout({
   children,
+  params,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
+  params: { roomId: string };
 }) {
-  return <SocketProvider>{children}</SocketProvider>
+  return <SocketProvider roomId={params.roomId}>{children}</SocketProvider>;
 }
